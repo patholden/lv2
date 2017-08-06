@@ -1,4 +1,4 @@
-# lv2---this repository contains new files for LaserVision changes made for new TargetFind operation.
+# lv2---this repository contains files for LaserVision firmware, including new files for new TargetFind operation.
 #       There is a new Linux driver file so both driver files are now contained in "drivers/misc/lv2"
 #       directory.  New commands were added to the CMDW struct for new driver.
 #       A new ags_daemon file for the new TargetFind operation was added called TargetFind.c with an
@@ -23,8 +23,6 @@
 #       TargetFind.c only has coarse-scan operation coded because we are still in phase of determining timing for
 #       basic CoarseScan operation.
 #
-#       Build instructions are in the README_developers file in DOCUMENTATION directory.
-#       Go to test-files directory, run "make clean; make all; make install"
-#       Go to buildroot directory, run "make linux-rebuild; make"
-#       Go to ags_daemon directory, run "make burnusb".  We're not using daemon yet, so no need to build it at
-#       this point.
+#       Build instructions are in the README_developers file in ags_daemon directory in a file called ReadMe.txt.
+#
+#
