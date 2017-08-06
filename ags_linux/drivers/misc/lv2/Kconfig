@@ -1,0 +1,9 @@
+config AGS_LASERGUIDE
+	bool "AGS Laser Guidance System driver"
+	default y
+	---help---
+	  This device provides read-write-ioctl access
+	  to the LaserVision laser device and FPGA. The
+	  device /dev/laser and /dev/lv2 is used for accessing
+	  the LaserVision components.  It is accessed via ioctl,
+	  read, or write commands from the LV app.

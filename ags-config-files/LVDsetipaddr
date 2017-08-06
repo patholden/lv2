@@ -1,0 +1,25 @@
+#! /bin/sh
+#
+# LVDsetipaddr	This script will Replace default /etc/network/interface file
+#               with customer-defined IP address.
+#
+# Version:	1.0
+#
+ipaddr=$1
+bcaddr=$2
+gwaddr=$3
+netfile="/etc/network/interfaces"
+su
+cat >${netfile} << EOF
+# Custom LaserVision network interface file
+auto lo
+iface lo inet loopback
+# set up static ip for eth0
+auto eth0
+iface eth0 inet static
+ name Ethernet alias LAN card
+ address $ipaddr
+ broadcast $bcaddr
+ gateway $gwaddr
+ netmask 255.255.0.0
+EOF

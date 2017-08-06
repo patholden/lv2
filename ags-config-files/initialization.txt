@@ -1,0 +1,19 @@
+$
+TransformTolerance = 8.0E-6
+DisplayPeriod = 150
+FastExponent = 11
+SlowExponent = 8
+CurveInterpolation = .25
+ArcSteps = 60
+BeamLinearRangeX = 200
+BeamLinearRangeY = 200
+CoarseFactor = 8 
+SearchStepPeriod = 40
+SuperFineCount = 8
+SuperFineFactor = 20
+Searchattempts = 2
+multiplesweeps = 2 
+Dwell = 10
+IpAddress = 10.1.1.116
+ProjectorMode = Laser
+XXX
