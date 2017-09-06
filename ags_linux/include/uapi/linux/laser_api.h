@@ -129,6 +129,7 @@ typedef enum{
   CMDW_LV2_MVXYLITE,
   CMDW_LV2_SENSE_XPOINT,
   CMDW_LV2_SENSE_YPOINT,
+  CMDW_LV2_COARSE_SCAN_BOX,
   CMDW_LAST                    // DO NOT ADD BELOW HERE
 }lg_cmd_enums;
 
@@ -186,12 +187,23 @@ struct lv2_xypoints {
   int16_t   yPoint;
   uint32_t  pad;  // Pad out for union conformance
 };
-struct lv2_sense_info {
-  int16_t   data;       // Needs to be signed to deal with LTC1597 bipolar data
-  uint8_t   loop_count; // Number of write/sense operations to perform
-  int8_t    step;       // XY step, can be +/-
-  uint8_t   unused[4];  // Pad out for union conformance
+struct lv2_sense_line_data {
+  uint32_t  sense_buf_idx;
+  int16_t   point;
+  uint8_t   step;
+  uint8_t   numPoints;
+  uint8_t   point_delay;
 };
+struct lv2_sense_info {
+  uint32_t  sense_buf_sz;     // buffer size for sense data
+  int16_t   xData;            // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
+  int16_t   yData;            // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
+  uint8_t   numPoints;        // Number of write/sense operations to perform
+  uint8_t   step;             // XY step, can be +/-
+  uint8_t   point_delay;      // usec delay between sense operations
+  uint8_t   unused;           // Pad out for union conformance
+};
+
 struct lv2_sense_one_info {
   int16_t   data;       // Needs to be signed to deal with LTC1597 bipolar data
   uint16_t  pad;

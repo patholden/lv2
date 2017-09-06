@@ -1,6 +1,6 @@
 /*************************************************************
  *                                                           *
- * Assembly Guidance Systems new laser device tests          *
+ * Aligned Vision, Inc.      new laser device tests          *
  * Copyright 2015.                                           *
  *                                                           *
  * Test Name:  lv_box_tests                                  *
@@ -9,7 +9,7 @@
  * Description:  This test exercises the new kernel laser    *
  *               device driver.  It attempts to do a line    *
  *               along X axis, line along Y axis, then       *
- *               sense on X & Y lines.                       *
+ *               create a box along X & Y axis.              *
  *                                                           *
  ************************************************************/
 #include <stdint.h>
@@ -58,55 +58,14 @@ static void do_write_xydata(int16_t x, int16_t y)
     lv_setpoints_lite(pConfigMaster, &xydata);
     return;
 }
-static void do_write_sensedata_x(int16_t point, uint16_t step, uint16_t loop_count)
-{
-    struct lv2_sense_info   sense_data;
-
-    sense_data.data = point;
-    sense_data.step = step;
-    sense_data.loop_count = loop_count;
-
-    lv_senseX_cmd(pConfigMaster, (struct lv2_sense_info *)&sense_data);
-    return;
-}
-static void do_write_sensedata_y(int16_t point, uint16_t step, uint16_t loop_count)
-{
-    struct lv2_sense_info   sense_data;
-
-    sense_data.data = point;
-    sense_data.step = step;
-    sense_data.loop_count = loop_count;
-
-    lv_senseY_cmd(pConfigMaster, (struct lv2_sense_info *)&sense_data);
-    return;
-}
-static void do_write_sense_one_x(int16_t point, uint32_t index)
-{
-    struct lv2_sense_one_info   sense_data;
-
-    sense_data.data = point;
-    sense_data.index = index;
-    lv_sense_oneX_cmd(pConfigMaster, (struct lv2_sense_one_info *)&sense_data);
-    return;
-}    
-static void do_write_sense_one_y(int16_t point, uint32_t index)
-{
-    struct lv2_sense_one_info   sense_data;
-
-    sense_data.data = point;
-    sense_data.index = index;
-    lv_sense_oneY_cmd(pConfigMaster, (struct lv2_sense_one_info *)&sense_data);
-    return;
-}    
 int main( int argc, char ** argv )
 {
-    struct write_sense_data   *pWriteSenseData;
-    int                        error;
-    int16_t                    i;
     int16_t                    inputX;
     int16_t                    inputY;
+    int16_t                    currentX;
+    int16_t                    currentY;
+    uint16_t                   i;
     uint16_t                   step;
-    uint16_t                   data_size;
     uint16_t                   num_points;
     
     // Make sure user entered x & y coords
@@ -141,109 +100,55 @@ int main( int argc, char ** argv )
 	closelog();
 	exit(EXIT_FAILURE);
       }
-    data_size = num_points  * sizeof(struct write_sense_data);
-    pWriteSenseData = (struct write_sense_data *)malloc(data_size);
-    if (!pWriteSenseData)
-      syslog(LOG_ERR,"\nCoarseScanFindMatch: ERROR trying to malloc buffer\n");
 
-    // Try to write X points
+    // Traverse Y axis, direction=up (positive step)
     do_write_dark_xydata(inputX,inputY);
     usleep(100);
-    for (i = inputX; i < 10000+inputX; i+=step)
+    while (1)
       {
-	do_write_xydata(i, inputY);
-	usleep(1 * 1000);
+	currentX = inputX;
+	currentY = inputY;
+	for (i = 0; i < num_points; i+=step)
+	  {
+	    currentY += step;
+	    do_write_xydata(currentX, currentY);
+	    //	    usleep(100);
+	  }
+	syslog(LOG_NOTICE, "Y-Axis-Up Line Test Complete: StartX=%x, StartY=%x, Step=%d\n", currentX,currentY, step);
+	// currentX = inputX + (num_points * step), currentY=inputY
+	currentX = inputX;
+	currentY = inputY + (num_points * step);
+	// Traverse right-side X, direction=right (positive step)
+	for (i = 0; i < num_points; i+=step)
+	  {
+	    currentX += step;
+	    do_write_xydata(currentX, currentY);
+	    usleep(100);
+	  }
+	syslog(LOG_NOTICE, "X-Axis-Right Line Test Complete: StartX=%x, StartY=%x, Step=%d\n", currentX,currentY, step);
+	// currentX = inputX + (num_points * step), currentY=inputY + (num_points * step)
+	currentX = inputX + (num_points * step);
+	currentY = inputY + (num_points * step);
+	// Traverse Y, direction=down (negative step)
+	for (i = 0; i < num_points; i+=step)
+	  {
+	    currentY -= step;
+	    do_write_xydata(currentX, currentY);
+	    usleep(100);
+	  }
+	syslog(LOG_NOTICE, "Y-Axis-Down Line Test Complete: StartX=%x, StartY=%x, Step=%d\n", currentX,currentY, ~step);
+	// currentX = inputX + (num_points * step), currentY=inputY
+	currentX = inputX + (num_points * step);
+	currentY = inputY;
+	// Traverse X, direction=left (negative step)
+	for (i = 0; i < num_points; i+=step)
+	  {
+	    currentX -= step;
+	    do_write_xydata(currentX, currentY);
+	    usleep(100);
+	  }
+	syslog(LOG_NOTICE, "X-Axis-Left Line Test Complete:  StartX=%x, StartY=%x, Step=%d\n", inputX,inputY, ~step);
+	usleep(1000);
       }
-    syslog(LOG_NOTICE, "X Line Test Complete: StartX=%x, StartY=%x, Step=%d\n", inputX,inputY, step);
-    usleep(300 * 1000);
-    do_write_dark_xydata(inputX+10000,inputY);
-
-    // Now traverse Y
-    do_write_dark_xydata(inputX,inputY);
-    for (i = inputY; i < inputY+10000; i+=step)
-      {
-	do_write_xydata(0, inputY + i);
-	usleep(1 * 1000);
-      }
-    syslog(LOG_NOTICE, "Y Line Test Complete:  StartX=%x, StartY=%x, Step=%d\n", inputX,inputY, step);
-    do_write_dark_xydata(inputX,inputY+10000);
-    do_write_dark_xydata(inputX,inputY);
-
-    usleep(1000 * 1000);
-    // Sense-X (loop in driver) unit test
-    syslog(LOG_NOTICE, "Start Sense-Traverse-X unit test");
-    do_write_dark_xydata(inputX,inputY);
-    do_write_sensedata_x(inputX, step, num_points);
-    error = read(pConfigMaster->fd_lv2, (uint8_t *)pWriteSenseData, data_size);
-    if (error < 0)
-      {
-	syslog(LOG_ERR,"\nError reading from LV2 device\n");
-	free((uint8_t *)pWriteSenseData);
-	exit(EXIT_FAILURE);
-      }
-    // Display data
-    syslog(LOG_NOTICE,"sense_data for Xtraverse:");
-    for (i = 0; i < num_points; i++)
-      {
-	syslog(LOG_NOTICE,"   xpoint[%d]=%x;sense_data=%x",
-	       i,pWriteSenseData[i].point, pWriteSenseData[i].sense_val);
-      }
-    usleep(1000 * 1000);
-    // Sense-Y (loop in driver) unit test
-    do_write_dark_xydata(inputX,inputY);
-    do_write_sensedata_y(inputY, step, num_points);
-    error = read(pConfigMaster->fd_lv2, (uint8_t *)pWriteSenseData, data_size);
-    if (error < 0)
-      {
-	syslog(LOG_ERR,"\nError reading from LV2 device\n");
-	free((uint8_t *)pWriteSenseData);
-	exit(EXIT_FAILURE);
-      }
-    // Display data
-    syslog(LOG_NOTICE, "BOX_TEST:  sense_data for Ytraverse(driver-loop):");
-    for (i = 0; i < num_points; i++)
-      {
-	syslog(LOG_NOTICE,"   ypoint[%d]=%x;sense_data=%x",
-	       i,pWriteSenseData[i].point, pWriteSenseData[i].sense_val);
-      }
-    // Sense-X (loop here), driver does single point sense-operation
-    for (i = 0; i < num_points; i++)
-      {
-	do_write_sense_one_x(inputX+(i*step), i);
-      }
-    error = read(pConfigMaster->fd_lv2, (uint8_t *)pWriteSenseData, data_size);
-    if (error < 0)
-      {
-	syslog(LOG_ERR,"\nError reading from LV2 device\n");
-	free((uint8_t *)pWriteSenseData);
-	exit(EXIT_FAILURE);
-      }
-    // Display data
-    syslog(LOG_NOTICE, "BOX_TEST:  sense_data for X (local loop):");
-    for (i = 0; i < num_points; i++)
-      {
-	syslog(LOG_NOTICE,"   xpoint[%d]=%x;sense_data=%x",
-	       i,pWriteSenseData[i].point, pWriteSenseData[i].sense_val);
-      }
-    // Sense-Y (loop here), driver does single point sense-operation
-    for (i = 0; i < num_points; i++)
-      {
-	do_write_sense_one_y(inputY+(i*step), i);
-      }
-    error = read(pConfigMaster->fd_lv2, (uint8_t *)pWriteSenseData, data_size);
-    if (error < 0)
-      {
-	syslog(LOG_ERR,"\nError reading from LV2 device\n");
-	free((uint8_t *)pWriteSenseData);
-	exit(EXIT_FAILURE);
-      }
-    // Display data
-    syslog(LOG_NOTICE, "BOX_TEST:  sense_data for Y (local loop):");
-    for (i = 0; i < num_points; i++)
-      {
-	syslog(LOG_NOTICE,"   ypoint[%d]=%x;sense_data=%x",
-	       i,pWriteSenseData[i].point, pWriteSenseData[i].sense_val);
-      }
-    free((uint8_t *)pWriteSenseData);
     exit(EXIT_SUCCESS);
 }

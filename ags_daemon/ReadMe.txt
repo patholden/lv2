@@ -32,8 +32,7 @@ git pull <URL> master
 =                                                              =
 ================================================================
 BUILD Environment changes:
-Go to your home directory.  Create $(HOME)/newbuildroot directory, cd to it, download buildroot from https://buildroot.org/downloads/ and get last tar.gz from November, 2015.  gunzip & extract file (in your buildroot directory). Rename (mv) this directory $(HOME)/buildroot.
-Go back to home directory.
+Go to your home directory.
 follow GIT instructions for https://github.com/AlignedVision/lv2.
 When you pull the master branch, you'll end up with the following directories:
 $(HOME)/ags_daemon
@@ -43,7 +42,7 @@ $(HOME)/ags_test_files
 $(HOME)/buildroot
 $(HOME)/syslinux-4.04
 
-Go to buildroot directory and do following:
+Next, you need to set up the buildroot environment for AGS:
 cd $(HOME)/buildroot
 cp $(HOME)/ags-config-files/ags-buildroot-config $(HOME)/buildroot/.config
 cd $(HOME)/buildroot/board
@@ -113,6 +112,12 @@ exit   (Get out of su mode)
 ================================================================
 cd $(HOME)/ags_daemon;make burnusb
 NOTE:  MAKE SURE TO USE EJECT to remove USB stick once programmed.
+
+================================================================
+=                                                              =
+=                      Running code on projector               =
+=                                                              =
+================================================================
 To run AGS operational code on system:
 With power off, insert USB stick into top USB slot to right of HDMI connector.
 Turn power on, you'll see Linux kernel go through it's initialization,

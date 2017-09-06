@@ -29,6 +29,13 @@
 #define SHORT_MAX_OVERFLOW           0x10000
 #define SENSOR_DEF_FREQ              40
 #define SENSOR_MAX_POLL_NUM          100
+#define SENSOR_MIN_DELAY             40
+
+// embedded driver coarse-scan defines
+enum lv2_step_type {
+    LV2_ADD_STEP=1,
+    LV2_SUB_STEP=2,
+};
 
 // state machine defines
 enum lg_states {

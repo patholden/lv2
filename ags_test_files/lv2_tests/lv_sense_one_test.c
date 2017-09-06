@@ -50,15 +50,6 @@ static void do_write_dark_xydata(int16_t x, int16_t y)
     lv_setpoints_dark(pConfigMaster, &xydata);
     return;
 }
-static void do_write_xydata(int16_t x, int16_t y)
-{
-    struct lv2_xypoints   xydata;
-
-    xydata.xPoint = x;
-    xydata.yPoint = y;
-    lv_setpoints_lite(pConfigMaster, &xydata);
-    return;
-}
 static void do_write_sense_one_x(int16_t point, uint32_t index)
 {
     struct lv2_sense_one_info   sense_data;
@@ -165,14 +156,13 @@ int main( int argc, char ** argv )
     // Sense-X (loop here), driver does single point sense-operation
     for (i = 0; i < numPoints; i++)
       {
-	point = inputX+(i*step);
+	point = inputX+ (i * step);
 	gettimeofday(&start, NULL);
 	do_write_sense_one_x(point, i);
 	gettimeofday(&end, NULL);
+	usleep(op_delay);
 	elapsedTime = end.tv_usec - start.tv_usec;
 	syslog(LOG_NOTICE, "SENSE_ONE_TEST:  write-senseX operation takes %f usec", elapsedTime);
-	do_write_dark_xydata(point, inputY);
-	usleep(op_delay);
       }
     do_write_dark_xydata(inputX,inputY);
     error = read(pConfigMaster->fd_lv2, pData, data_size);
@@ -199,7 +189,6 @@ int main( int argc, char ** argv )
 	gettimeofday(&end, NULL);
 	elapsedTime += end.tv_usec - start.tv_usec;
 	syslog(LOG_NOTICE, "SENSE_ONE_TEST:  write-senseY operation takes %f usec", elapsedTime);
-	do_write_dark_xydata(inputX, point);
 	usleep(op_delay);
       }
     do_write_dark_xydata(inputX,inputY);

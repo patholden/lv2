@@ -75,6 +75,11 @@ void lv_senseY_cmd(struct lg_master *pLgMaster, struct lv2_sense_info *pSenseDat
     lv_sense_cmd(pLgMaster, pSenseData, CMDW_LV2_TRAVERSEY);
     return;
 }
+void lv_box_sense_cmd(struct lg_master *pLgMaster, struct lv2_sense_info *pSenseData)
+{
+    lv_sense_cmd(pLgMaster, pSenseData, CMDW_LV2_COARSE_SCAN_BOX);
+    return;
+}
 static void lv_sense_one_cmd(struct lg_master *pLgMaster, struct lv2_sense_one_info *pSenseData, uint32_t sense_cmd)
 {
     doLv2WriteCmd(pLgMaster, (void *)pSenseData, sizeof(struct lv2_sense_one_info), sense_cmd);

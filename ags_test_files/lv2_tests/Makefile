@@ -13,6 +13,8 @@ BOX_TEST_OBJS = lv_box_test.o  \
 		../../ags_daemon/Laser_If.o
 SENSE_ONE_TEST_OBJS = lv_sense_one_test.o  \
 		../../ags_daemon/Laser_If.o
+SENSE_LOOP_TEST_OBJS = lv_sense_loop_test.o  \
+		../../ags_daemon/Laser_If.o
 COARSE_TEST_OBJS = 	lv_coarse_scan_test.o \
 		../../ags_daemon/Laser_If.o \
 		../../ags_daemon/TargetFind.o
@@ -23,17 +25,20 @@ coarse_scan_test: $(COARSE_TEST_OBJS) ../../linux_headers/include/linux/laser_ap
 	$(CC) $(LDFLAGS) -o $@ $(COARSE_TEST_OBJS)
 sense_one_test: $(SENSE_ONE_TEST_OBJS) ../../linux_headers/include/linux/laser_api.h
 	$(CC) $(LDFLAGS) -o $@ $(SENSE_ONE_TEST_OBJS)
-all:  box_test coarse_scan_test sense_one_test
+sense_loop_test: $(SENSE_LOOP_TEST_OBJS) ../../linux_headers/include/linux/laser_api.h
+	$(CC) $(LDFLAGS) -o $@ $(SENSE_LOOP_TEST_OBJS)
+all:  box_test coarse_scan_test sense_one_test sense_loop_test
 
 %.o: %.c ../../linux_headers/include/linux/laser_api.h
 	$(CC) -c -o $@ $(CFLAGS) -I$(INCLUDES) $<
 clean:
-	rm *.o box_test coarse_scan_test
+	rm *.o box_test coarse_scan_test sense_one_test sense_loop_test
 install:
-	chmod 755 box_test coarse_scan_test sense_one_test
+	chmod 755 box_test coarse_scan_test sense_one_test sense_loop_test
 	cp box_test $(TEST_DIR)
 	cp coarse_scan_test $(TEST_DIR)
 	cp sense_one_test $(TEST_DIR)
+	cp sense_loop_test $(TEST_DIR)
 burnusb:
 	sudo umount /dev/sdb1
 	sudo mount /dev/sdb1 /mnt/stick
