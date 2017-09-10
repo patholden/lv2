@@ -1013,13 +1013,13 @@ void InitSensorSearch(void)
 {
     int i;
 
-    gLout = (int16_t *)calloc((size_t)3*MAX_TGFIND_BUFFER,sizeof(int16_t));
+    gLout = (int16_t *)calloc((size_t)3*MAX_TF_BUFFER,sizeof(int16_t));
     if (!gLout) syslog(LOG_NOTICE, "CAN'T ALLOCATE MEMORY FOR gLout BUFFER");
 
-    gLout1 = (int16_t *)calloc((size_t)3*MAX_TGFIND_BUFFER,sizeof(int16_t));
+    gLout1 = (int16_t *)calloc((size_t)3*MAX_TF_BUFFER,sizeof(int16_t));
     if (!gLout1) syslog(LOG_NOTICE, "CAN'T ALLOCATE MEMORY FOR gLout1 BUFFER");
 
-    gLout2 = (int16_t *)calloc((size_t)3*MAX_TGFIND_BUFFER,sizeof(int16_t));
+    gLout2 = (int16_t *)calloc((size_t)3*MAX_TF_BUFFER,sizeof(int16_t));
     if (!gLout2) syslog(LOG_NOTICE, "CAN'T ALLOCATE MEMORY FOR gLout2 BUFFER");
 
     gSaveMatch = (uint8_t *)calloc((size_t)500000,sizeof(uint8_t));

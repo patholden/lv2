@@ -30,7 +30,7 @@
 #include <linux/laser_api.h>
 #include <string.h>
 #include "BoardComm.h"
-#include "Laser_If.h"
+#include "Laser_lv2_If.h"
 
 // Some people don't know how to use structs so following globals are here
 // just to get things compiling for test code.
@@ -78,7 +78,7 @@ int main( int argc, char ** argv )
 {
     struct timeval             start;
     struct timeval             end;
-    struct write_sense_data   *pWriteSenseData;
+    struct write_sense_cs_data   *pWriteSenseData;
     double                     elapsedTime;
     int                        error;
     int16_t                    i;
@@ -122,8 +122,8 @@ int main( int argc, char ** argv )
 	closelog();
 	exit(EXIT_FAILURE);
       }
-    data_size = num_points  * sizeof(struct write_sense_data);
-    pWriteSenseData = (struct write_sense_data *)malloc(data_size);
+    data_size = num_points  * sizeof(struct write_sense_cs_data);
+    pWriteSenseData = (struct write_sense_cs_data *)malloc(data_size);
     if (!pWriteSenseData)
       syslog(LOG_ERR,"\nCoarseScanFindMatch: ERROR trying to malloc buffer\n");
 

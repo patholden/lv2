@@ -72,7 +72,7 @@ AGS_OBJECTS = Main.o \
 	      readnewcal.o \
 	      polyfunc.o \
 	      FracCert.o  DoubleSensorSearch.o \
-	      SensorSearch.o  TargetFind.o Laser_If.o Files.o
+	      SensorSearch.o  TargetFind.o Laser_lv2_If.o Files.o
 #
 #
 agsd : compile.h asciiID.h $(AGS_OBJECTS) BoardComm.h $(LNXHDRDIR)/include/linux/laser_api.h

@@ -130,6 +130,7 @@ typedef enum{
   CMDW_LV2_SENSE_XPOINT,
   CMDW_LV2_SENSE_YPOINT,
   CMDW_LV2_COARSE_SCAN_BOX,
+  CMDW_LV2_FIND_SS_COORDS,
   CMDW_LAST                    // DO NOT ADD BELOW HERE
 }lg_cmd_enums;
 
@@ -139,8 +140,11 @@ typedef enum{
 #define MAX_TARGETS       24
 #define MAX_XYPOINTS    2048 * MAX_TARGETS * 2 
 #define MAX_LG_BUFFER   MAX_XYPOINTS * sizeof(struct lg_xydata)  /* maximum size of lg_data[] */
-#define MAX_TGFIND_BUFFER MAX_XYPOINTS * sizeof(struct write_sense_data)  // maximum number of target-find readings
+#define MAX_TF_BUFFER MAX_XYPOINTS * sizeof(struct write_sense_cs_data)  // maximum number of target-find readings
 #define DO_TEST_DISPLAY  0x1     // USED BY DIAGS.  Will simulate DISPLAY mode
+#define FSSC_THRESHOLD   0xF0    // Indicator for target-not-found when looking
+                                 //   for super-scan endpoints
+
 struct hobbs_ctrs {
   time_t    hobbs_time;
   time_t    xscanner_time;
@@ -151,11 +155,18 @@ struct event_times {
   time_t    last_gap_usec;    // Used to track time between lg_timer events from user side
   time_t    last_exec_usec;   // Used to track execution time from user side
 };
-struct write_sense_data
+struct write_sense_cs_data
 {
   int16_t   point;
   uint8_t   sense_val;
-  uint8_t   pad[2];
+  uint8_t   pad[3];
+};
+struct write_sense_fssc_data
+{
+  int16_t   xLeftEndpoint;
+  int16_t   xRightEndpoint;
+  int16_t   yBottomEndpoint;
+  int16_t   yTopEndpoint;
 };
 struct lg_xydata {
   uint8_t   ctrl_flags;
@@ -188,6 +199,7 @@ struct lv2_xypoints {
   uint32_t  pad;  // Pad out for union conformance
 };
 struct lv2_sense_line_data {
+  uint32_t  sense_buf_idx;
   int16_t   point;
   uint8_t   step;
   uint8_t   numPoints;
@@ -277,6 +289,8 @@ struct cmd_rw {
 } __attribute__ ((packed));
 
 /* the following are ioctl commands following the linux convention */
+// NOTE:  NEED TO GET RID OF THESE.  Linux stopped using this method after 2.6
+//        in favor of READ/WRITE or SYSFS file IO operations.
 #define LG_IOCNUM  0xE1
 #define   LGGETANGLE      _IOR(LG_IOCNUM, 0xA2, struct lg_xydata)
 #define   LGGETQCFLAG     _IOR(LG_IOCNUM, 0xB5, unsigned int)

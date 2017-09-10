@@ -29,7 +29,7 @@
 #include <linux/laser_api.h>
 #include <string.h>
 #include "BoardComm.h"
-#include "Laser_If.h"
+#include "Laser_lv2_If.h"
 
 // Some people don't know how to use structs so following globals are here
 // just to get things compiling for test code.

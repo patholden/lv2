@@ -5,13 +5,22 @@
 
 
 #define SENSE_BUF_SIZE          sizeof(int16_t) * 500000
+#define DEFAULT_SENSE_DELAY     40
+
+// Specific default values for CoarseScan()
 #define COARSE_SCAN_STEP        10
+#define FSSC_SCAN_STEP           1
 #define COARSE_SCAN_COUNT       10
-#define COARSE_SCAN_SENSE_DELAY 40
 #define COARSE_SCAN_MIN_FOUND    5
-#define COARSE_SCAN_MAX_LOOPS   70   // 4" square, FIXME---PAH---SHOULD BE ENTERED BY USER EVENTUALLY
-#define COARSE_SCAN_THRESHOLD1  60   // FIXME---PAH---SHOULD BE ENTERED BY USER EVENTUALLY
-#define COARSE_SCAN_THRESHOLD2  60   // FIXME---PAH---SHOULD BE ENTERED BY USER EVENTUALLY
+#define COARSE_SCAN_MAX_LOOPS   70
+#define COARSE_SCAN_THRESHOLD1  60
+#define COARSE_SCAN_THRESHOLD2  30
+
+// Specific default values for FindSuperScanCoords()
+#define FSSC_STEP                1
+
+// Specific default values for SuperScan()
+#define SUPER_SCAN_STEP          1
 
 int FindSuperScanCoords(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 			int16_t *foundX, int16_t *foundY);

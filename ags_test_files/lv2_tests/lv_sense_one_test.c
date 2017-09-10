@@ -30,7 +30,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include "BoardComm.h"
-#include "Laser_If.h"
+#include "Laser_lv2_If.h"
 
 // Some people don't know how to use structs or to do abstraction layers,
 // so I had to add the following globals below just to get things compiling
@@ -74,7 +74,7 @@ int main( int argc, char ** argv )
     struct timeval             end;
     double                     elapsedTime;
     uint8_t                    *pData;
-    struct write_sense_data    *pWriteSenseInput;
+    struct write_sense_cs_data    *pWriteSenseInput;
     int                        error;
     int16_t                    i;
     int16_t                    inputX;
@@ -118,39 +118,15 @@ int main( int argc, char ** argv )
 	closelog();
 	exit(EXIT_FAILURE);
       }
-    data_size = numPoints  * sizeof(struct write_sense_data);
+    data_size = numPoints  * sizeof(struct write_sense_cs_data);
     pData = malloc(data_size);
     if (!pData)
       {
 	syslog(LOG_ERR,"ERROR trying to malloc buffer for reading sense data");
 	exit(EXIT_FAILURE);
       }
-    pWriteSenseInput = (struct write_sense_data *)pData;
+    pWriteSenseInput = (struct write_sense_cs_data *)pData;
 
-#if 0
-    // Write to DAC along Y axis (line test)
-    do_write_dark_xydata(inputX,inputY);
-    usleep(100);
-    for (i = inputX; i < 10000+inputX; i+=step)
-      {
-	do_write_xydata(i, inputY);
-	usleep(1 * 1000);
-      }
-    syslog(LOG_NOTICE, "X Line Test Complete: StartX=%x, StartY=%x, Step=%d\n", inputX,inputY, step);
-    usleep(300 * 1000);
-    do_write_dark_xydata(inputX+10000,inputY);
-
-    // Write to DAC along X axis (line test)
-    do_write_dark_xydata(inputX,inputY);
-    usleep(100);
-    for (i = inputY; i < inputY+10000; i+=step)
-      {
-	do_write_xydata(inputX, inputY + i);
-	usleep(1 * 1000);
-      }
-    syslog(LOG_NOTICE, "Y Line Test Complete:  StartX=%x, StartY=%x, Step=%d\n", inputX,inputY, step);
-    do_write_dark_xydata(inputX,inputY+10000);
-#endif
     do_write_dark_xydata(inputX,inputY);
     usleep(1000 * 1000);
     // Sense-X (loop here), driver does single point sense-operation
