@@ -161,13 +161,6 @@ struct write_sense_cs_data
   uint8_t   sense_val;
   uint8_t   pad[3];
 };
-struct write_sense_fssc_data
-{
-  int16_t   xLeftEndpoint;
-  int16_t   xRightEndpoint;
-  int16_t   yBottomEndpoint;
-  int16_t   yTopEndpoint;
-};
 struct lg_xydata {
   uint8_t   ctrl_flags;
   char      unused1;
@@ -200,19 +193,26 @@ struct lv2_xypoints {
 };
 struct lv2_sense_line_data {
   uint32_t  sense_buf_idx;
+  uint16_t  step;
+  uint16_t  numPoints;
   int16_t   point;
-  uint8_t   step;
-  uint8_t   numPoints;
   uint8_t   point_delay;
+  uint8_t   pad;
+};
+struct write_sense_fssc_data
+{
+  struct lv2_xypoints   LeftEndpoints;
+  struct lv2_xypoints   RightEndpoints;
+  struct lv2_xypoints   BottomEndpoints;
+  struct lv2_xypoints   TopEndpoints;
 };
 struct lv2_sense_info {
-  uint32_t  sense_buf_sz;     // buffer size for sense data
+  uint16_t   numPoints;        // Number of write/sense operations to perform
+  uint16_t   step;             // XY step, can be +/-
   int16_t   xData;            // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
   int16_t   yData;            // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
-  uint8_t   numPoints;        // Number of write/sense operations to perform
-  uint8_t   step;             // XY step, can be +/-
   uint8_t   point_delay;      // usec delay between sense operations
-  uint8_t   unused;           // Pad out for union conformance
+  uint8_t   unused[3];           // Pad out for union conformance
 };
 
 struct lv2_sense_one_info {

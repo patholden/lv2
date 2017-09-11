@@ -30,7 +30,7 @@ static char rcsid[] = "$Id$";
 // Static prototypes for local functions
 
 static int isOutOfBounds(int16_t point, int16_t step, uint16_t count);
-int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, int16_t *foundX, int16_t *foundY, uint32_t read_sense_sz);
+int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, int16_t *foundX, int16_t *foundY);
 
 //  Local functions
 /****************************************************************
@@ -75,7 +75,7 @@ int isOutOfBounds(int16_t point, int16_t step, uint16_t count)
  *                          (x,y pair where target is found at)
  *
  ***************************************************************/
-int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, int16_t *foundX, int16_t *foundY, uint32_t read_sense_sz)
+int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, int16_t *foundX, int16_t *foundY)
 {
     struct write_sense_cs_data    *pSenseFound;
     int        rc;
@@ -86,13 +86,8 @@ int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t
     *foundX = kMaxUnsigned;
     *foundY = kMaxUnsigned;
 
-    if (read_sense_sz > MAX_TF_BUFFER)
-      {
-	syslog(LOG_ERR, "CoarseScanFindMatch: length %d too long for sensing, max=%ld", read_sense_sz, MAX_TF_BUFFER);
-	return(-1);
-      }
     // Sense Buffer is filled by driver
-    pSenseFound = (struct write_sense_cs_data *)malloc(read_sense_sz);
+    pSenseFound = (struct write_sense_cs_data *)malloc(MAX_TF_BUFFER);
     if (!pSenseFound)
       {
 	syslog(LOG_ERR,"CoarseScanFindMatch: ERROR trying to malloc buffer");
@@ -100,8 +95,8 @@ int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t
       }
     // Need to memset because typically the amount of sense data read in is much smaller than the actual
     // allocated size in the driver
-    memset(pSenseFound, 0, read_sense_sz);
-    rc = read(pLgMaster->fd_lv2, (uint8_t *)pSenseFound, read_sense_sz);
+    memset(pSenseFound, 0, MAX_TF_BUFFER);
+    rc = read(pLgMaster->fd_lv2, (uint8_t *)pSenseFound, MAX_TF_BUFFER);
     if (rc < 0)
       {
 	syslog(LOG_ERR,"CoarseScanFindMatch: ERROR reading from LV2 device #%d, errno=%x", pLgMaster->fd_lv2, errno);
@@ -156,7 +151,6 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     struct lv2_xypoints     xydata;
     int                     ret;
     uint32_t                box_loop_count;
-    uint32_t                sense_read_sz;
     int16_t                 currentX=startX;
     int16_t                 currentY=startY;
     
@@ -166,57 +160,60 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     // Set up starting point
     box_loop_count = 0;
     
+    // Starting arguments to box algorithm
+    sense_data.point_delay = DEFAULT_SENSE_DELAY; 
+    sense_data.step = COARSE_SCAN_STEP;
+    sense_data.numPoints = COARSE_SCAN_NUM_POINTS;
+
+    // Set up starting x,y points
+    currentX = startX - sense_data.step;
+    currentY = startY - sense_data.step;
+    sense_data.xData = currentX;
+    sense_data.yData = currentY;
+
+
+    // Move mirrors to starting XY in the dark on each loop to avoid ghost/tail
+    xydata.xPoint = startX; 
+    xydata.yPoint = startY; 
+    lv_setpoints_dark(pLgMaster, (struct lv2_xypoints *)&xydata);
+    usleep(250);
+
     // loop until out of grid points or target is found
-    currentX = startX;
-    currentY = startY;
-    sense_data.numPoints = COARSE_SCAN_COUNT;
-    
     while (box_loop_count != COARSE_SCAN_MAX_LOOPS)
       {
-	sense_data.step = COARSE_SCAN_STEP;
-	sense_data.numPoints += box_loop_count * 2;
-	sense_data.point_delay = DEFAULT_SENSE_DELAY;
-	sense_read_sz = sense_data.step * sense_data.numPoints * 4;
-	sense_data.sense_buf_sz = sense_read_sz;
-	// Move mirrors to starting XY in the dark on each loop to avoid ghost/tail
-	currentX = currentX - COARSE_SCAN_STEP - ((box_loop_count * COARSE_SCAN_COUNT)/2 - 1);
-	currentY = currentY - COARSE_SCAN_STEP - ((box_loop_count * COARSE_SCAN_COUNT)/2 - 1);
-	syslog(LOG_NOTICE, "BOX_LOOP: START X,Y=%x,%x; step=%d, numPoints=%d, loop_count=%d",
-	       currentX, currentY, sense_data.step, sense_data.numPoints, box_loop_count);
-	xydata.xPoint = currentX; 
-	xydata.yPoint = currentY; 
-	lv_setpoints_dark(pLgMaster, (struct lv2_xypoints *)&xydata);
-	usleep(250);
-
-	sense_data.xData = currentX;
-	sense_data.yData = currentY;
 	if (isOutOfBounds(sense_data.xData, sense_data.step, sense_data.numPoints))
 	  {
-	    syslog(LOG_NOTICE, "BOX_LOOP: OUT-OF-BOUNDS step=%d, data=%x, loop_count=%d",
-		   sense_data.step, sense_data.xData, sense_data.numPoints);
+	    syslog(LOG_NOTICE, "BOX_LOOP %d: OUT-OF-BOUNDS step=%d, data=%x, numPoints=%d",
+		   box_loop_count, sense_data.step, sense_data.xData, sense_data.numPoints);
 	    break;
 	  }
 	if (isOutOfBounds(sense_data.yData, sense_data.step, sense_data.numPoints))
 	  {
-	    syslog(LOG_NOTICE, "BOX_LOOP: OUT-OF-BOUNDS step=%d, data=%x, loop_count=%d",
-		   sense_data.step, sense_data.yData, sense_data.numPoints);
+	    syslog(LOG_NOTICE, "BOX_LOOP %d: OUT-OF-BOUNDS step=%d, data=%x, numPoints=%d",
+		   box_loop_count, sense_data.step, sense_data.yData, sense_data.numPoints);
 	    break;
 	  }
 
-	syslog(LOG_NOTICE,"BOX_LOOP %d START: Sending currentX=%x,currentY=%x", box_loop_count, currentX, currentY);
+	syslog(LOG_NOTICE, "BOX_LOOP %d: START X,Y=%x,%x; step=%d, numPoints=%d",
+	       box_loop_count, currentX, currentY, sense_data.step, sense_data.numPoints);
 	lv_box_sense_cmd(pLgMaster, (struct lv2_sense_info *)&sense_data);
     
-	ret = CoarseScanFindMatch(pLgMaster, sense_data.numPoints, startX, startY, foundX, foundY, sense_read_sz);
+	ret = CoarseScanFindMatch(pLgMaster, sense_data.numPoints, startX, startY, foundX, foundY);
 	if (ret == 0)
 	  {
-	    syslog(LOG_NOTICE, "CoarseScan():  found x=%x; found y=%x",*foundX, *foundY);
+	    syslog(LOG_NOTICE, "CoarseScan() END:  found x=%x; found y=%x; numLoops=%d",*foundX, *foundY, box_loop_count);
 	    return(0);
 	  }
 	// Adjust X & Y back to bottom left corner of box
-	syslog(LOG_NOTICE,"BOX LOOP %d END: currentX=%x,currentY=%x", box_loop_count, currentX, currentY);
+	sense_data.numPoints += ((box_loop_count * 2) + 2);
 	box_loop_count++;
+	currentX = startX - (COARSE_SCAN_STEP * (box_loop_count - 1));
+	currentY = startY - (COARSE_SCAN_STEP * (box_loop_count - 1));
+	sense_data.xData = currentX;
+	sense_data.yData = currentY;
       }
-	
+
+    syslog(LOG_NOTICE, "CoarseScan() END:  NO target found, numLoops=%d", box_loop_count);
     return(-1);
 }
 
@@ -236,14 +233,25 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
  *
  ***************************************************************/
 int FindSuperScanCoords(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
-		      int16_t *foundX, int16_t *foundY)
+			int16_t *superScanX, int16_t *superScanY, uint32_t *numLines, uint32_t *numPoints)
 {
     struct lv2_sense_info   sense_data;
     struct lv2_xypoints     xydata;
+    struct write_sense_fssc_data    *pSenseFound;
+    int                     rc;
     
-    // Starts out similar to coarse-scan function.
-    *foundX = kMaxUnsigned;
-    *foundY = kMaxUnsigned;
+    *superScanX = kMaxUnsigned;
+    *superScanY = kMaxUnsigned;
+    *numLines   = 0;
+    *numPoints   = 0;
+
+    // Sense Buffer is filled by driver
+    pSenseFound = (struct write_sense_fssc_data *)malloc(sizeof(struct write_sense_fssc_data));
+    if (!pSenseFound)
+      {
+	syslog(LOG_ERR,"FindSSCoords(): ERROR trying to malloc buffer");
+	return(-1);
+      }
 
     // numPoints not used for this type of search
     sense_data.step = FSSC_SCAN_STEP;
@@ -259,7 +267,32 @@ int FindSuperScanCoords(struct lg_master *pLgMaster, int16_t startX, int16_t sta
     usleep(250);
 
     lv_find_ss_coords_sense_cmd(pLgMaster, (struct lv2_sense_info *)&sense_data);
-    
+    rc = read(pLgMaster->fd_lv2, (uint8_t *)pSenseFound, sizeof(struct write_sense_fssc_data));
+    if (rc < 0)
+      {
+	syslog(LOG_ERR,"FindSSCoords(): ERROR reading from LV2 device #%d, errno=%x", pLgMaster->fd_lv2, errno);
+	free((uint8_t *)pSenseFound);
+	return(-1);
+      }
+    if ((pSenseFound->LeftEndpoints.xPoint == 0xFFFF)
+	&& (pSenseFound->LeftEndpoints.yPoint == 0xFFFF)
+	&& (pSenseFound->RightEndpoints.xPoint == 0xFFFF)
+	&& (pSenseFound->RightEndpoints.yPoint == 0xFFFF)
+	&& (pSenseFound->TopEndpoints.xPoint == 0xFFFF)
+	&& (pSenseFound->TopEndpoints.yPoint == 0xFFFF)
+	&& (pSenseFound->BottomEndpoints.xPoint == 0xFFFF)
+	&& (pSenseFound->BottomEndpoints.yPoint == 0xFFFF))
+      {
+	syslog(LOG_ERR, "SuperScan Coords not found for xy=%x,%x!", startX, startY);
+	free((uint8_t *)pSenseFound);
+	return(-1);
+      }
+    // Found coords for superscan, send back to caller
+    *numLines = pSenseFound->TopEndpoints.yPoint - pSenseFound->BottomEndpoints.yPoint;
+    *numPoints = pSenseFound->RightEndpoints.xPoint - pSenseFound->LeftEndpoints.xPoint;
+    *superScanX = pSenseFound->BottomEndpoints.xPoint - (*numPoints/2);
+    *superScanY = pSenseFound->BottomEndpoints.yPoint;
+    free((uint8_t *)pSenseFound);
     return(0);
 }
 
@@ -296,31 +329,45 @@ int SuperScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 int FindTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 	       int16_t *foundX, int16_t *foundY)
 {
-    struct   lv2_xypoints  xyPoints;
-    int                    rc;
+    struct lv2_xypoints  xyPoints;
+    uint32_t             numPoints;
+    uint32_t             numLines;
+    int                  rc;
 
     rc = CoarseScan(pLgMaster, startX, startY, foundX, foundY);
     // Move mirrors to starting XY in the dark on each loop to avoid ghost/tail
     xyPoints.xPoint = startX; 
     xyPoints.yPoint = startY; 
     lv_setpoints_dark(pLgMaster, (struct lv2_xypoints *)&xyPoints);
-    usleep(250);
     if (rc)
       return(rc);
     if ((*foundX == kMaxUnsigned) && (*foundY == kMaxUnsigned))
       return(-1);
 
     // Got a target
-    startX = *foundX;
-    startY = *foundY;
     xyPoints.xPoint = *foundX;
     xyPoints.yPoint = *foundY;
-    syslog(LOG_NOTICE, "Found target at x=%x,y=%x", *foundX, *foundY);
+    syslog(LOG_NOTICE, "CoarseScan(): Found target at x=%x,y=%x", *foundX, *foundY);
 
     // Next phase, find endpoints for super-fine scan
-    rc = FindSuperScanCoords(pLgMaster, startX, startY, foundX, foundY);
+    startX = *foundX;
+    startY = *foundY;
+    return(0);
+    rc = FindSuperScanCoords(pLgMaster, startX, startY, foundX, foundY, &numLines, &numPoints);
     if (rc)
       return(rc);
+    if ((*foundX == kMaxUnsigned) && (*foundY == kMaxUnsigned))
+      {
+	syslog(LOG_ERR, "FindSSCoords(): Target not found for XY=%x,%x", startX, startY);
+	return(-1);
+      }
+    if ((numLines == 0) || (numPoints == 0))
+      {
+	syslog(LOG_ERR, "FindSSCoords(): numPoints & numLines = 0 for XY=%x,%x, foundXY=%x,%x", startX, startY, *foundX, *foundY);
+	return(-1);
+      }
+	
+    syslog(LOG_NOTICE, "FindSSCoords(): Found target at x=%x,y=%x, numPoints=%d, numLines=%d", *foundX, *foundY, numPoints, numLines);
     startX = *foundX;
     startY = *foundY;
     rc = SuperScan(pLgMaster, startX, startY, foundX, foundY);
