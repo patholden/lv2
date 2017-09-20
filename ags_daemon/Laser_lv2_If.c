@@ -80,6 +80,11 @@ void lv_box_sense_cmd(struct lg_master *pLgMaster, struct lv2_sense_info *pSense
     lv_sense_cmd(pLgMaster, pSenseData, CMDW_LV2_COARSE_SCAN_BOX);
     return;
 }
+void lv_box_dark_sense_cmd(struct lg_master *pLgMaster, struct lv2_sense_info *pSenseData)
+{
+    lv_sense_cmd(pLgMaster, pSenseData, CMDW_LV2_COARSE_SCAN_BOX_DARK);
+    return;
+}
 void lv_find_ss_coords_sense_cmd(struct lg_master *pLgMaster, struct lv2_sense_info *pSenseData)
 {
     lv_sense_cmd(pLgMaster, pSenseData, CMDW_LV2_FIND_SS_COORDS);
@@ -98,5 +103,10 @@ void lv_sense_oneX_cmd(struct lg_master *pLgMaster, struct lv2_sense_one_info *p
 void lv_sense_oneY_cmd(struct lg_master *pLgMaster, struct lv2_sense_one_info *pSenseData)
 {
     lv_sense_one_cmd(pLgMaster, pSenseData, CMDW_LV2_SENSE_YPOINT);
+    return;
+}
+void lv_super_scan_sense_cmd(struct lg_master *pLgMaster, struct lv2_ss_sense_info *pSenseData)
+{
+    doLv2WriteCmd(pLgMaster, (void *)pSenseData, sizeof(struct lv2_ss_sense_info), CMDW_LV2_SUPER_SCAN);
     return;
 }

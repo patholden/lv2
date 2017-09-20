@@ -165,13 +165,19 @@ static inline void lv2_send_xy_to_dac(struct lv2_xypoints *xyData, uint8_t strob
     outb(strobe_off, LG_IO_CNTRL1);
     return;
 }
-static void lv2_sense_point(int16_t point, uint8_t point_type, uint8_t *sense_val)
+static void lv2_sense_point(int16_t point, uint8_t point_type, uint8_t *sense_val, uint8_t sense_delay)
 {    
     // Write x-data to DAC
     lv2_send_to_dac(point, STROBE_ON_LASER_ON, STROBE_OFF_LASER_ON, point_type);
+
+    // Wait x usec (user-defined)
+    printk("AV-LV2: write-wait is %d usec\n", sense_delay);
+    udelay(sense_delay);
+
     // Read from target-find register
     // Debounce to get rid of false-positive target finds
     *sense_val = inb(TFPORTRL);
+    printk("AV-LV2: sense-byte is %d\n", *sense_val);
     return;
 }
 void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct write_sense_cs_data *pSenseData, uint32_t point_axis, uint8_t step_direction)
@@ -196,12 +202,12 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	else if (step_direction == LV2_SUB_STEP)
 	  point -= pSenseInfo->step;
 	  
-	lv2_sense_point(point, point_axis, &sense_val);
+	lv2_sense_point(point, point_axis, &sense_val, pSenseInfo->sense_delay);
 	pSenseData[pt_idx].sense_val = ~sense_val;
 	pSenseData[pt_idx].point = point;
-	//	printk("LINE_WS_OP: sense point=%x; sense_read_data[%d]=%x\n",point, pt_idx, pSenseData[pt_idx].sense_val);
+	printk("AV-LV2:  LINE_WS_OP sense point=%x; sense_read_data[%d]=%x\n",point, pt_idx, pSenseData[pt_idx].sense_val);
 	pt_idx++;
-	udelay(sense_delay);    // Wait 40 usec to process next.
+	udelay(sense_delay);    // Wait minimum of 20 usec (minimum is set to 25) to process next x or y point.
       }
     return;
 }
@@ -235,24 +241,27 @@ void lv2_senseY_sub(struct write_sense_cs_data *pSenseWriteData, struct lv2_sens
     do_line_sense_operation(pSenseInfo, pSenseWriteData, LV2_YPOINT, LV2_SUB_STEP);
     return;
 }
-int lv2_coarse_scan_box(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
-{
-    struct write_sense_cs_data     *pSenseData;
+static void lv2_coarse_scan_box_op(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo, uint8_t laser_setting)
+{      
     struct lv2_sense_line_data  new_point;
-    uint8_t                     sense_val;
+    struct write_sense_cs_data *pSenseData;
     uint8_t                     beam_setting;
-    
+    uint8_t                     sense_val;
+
     pSenseData = (struct write_sense_cs_data *)priv->pSenseBuff;
     if (pSenseData == NULL)
       {
 	printk("AV-CS-BOX:  Sensor buffer not allocated properly\n");
-	return(-ENOMEM);
+	return;
       }
-    memset((uint8_t *)pSenseData, 0, MAX_TF_BUFFER);
-    	
-    // Turn on beam, bright intensity
+    memset((uint8_t *)pSenseData, 0, sizeof(struct write_sense_cs_data));
+
+    // Turn laser on or off, depending on laser-setting flag
     beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
-    beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
+    if (laser_setting == LV2_LASER_ON)
+      beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
+    else
+      beam_setting &= LASERDISABLE;            // dark move, disable laser
     outb(beam_setting, LG_IO_CNTRL2);
     
     // Make sure to take device lock before starting.
@@ -272,7 +281,7 @@ int lv2_coarse_scan_box(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
     // Sometimes there's a spike when beam is turned on,
     // so do per-point write-sense & debounce sense-buffer-register
     // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val);
+    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
     sense_val = inb(TFPORTRL);
     sense_val = inb(TFPORTRL);
     sense_val = inb(TFPORTRL);
@@ -296,7 +305,19 @@ int lv2_coarse_scan_box(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
     new_point.point = pSenseInfo->xData + (new_point.numPoints * new_point.step);
     new_point.sense_buf_idx += new_point.numPoints;
     lv2_senseX_sub(pSenseData, &new_point);
+}
 
+int lv2_coarse_scan_box(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
+{
+    lv2_coarse_scan_box_op(priv, pSenseInfo, LV2_LASER_ON);
+
+    // Box complete, return to caller
+    return(0);
+}
+
+int lv2_coarse_scan_box_dark(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
+{
+    lv2_coarse_scan_box_op(priv, pSenseInfo, LV2_LASER_OFF);
     // Box complete, return to caller
     return(0);
 }
@@ -325,7 +346,7 @@ void do_line_fssc_operation(struct lv2_sense_line_data *pSenseInfo, int16_t *end
 	else if (step_direction == LV2_SUB_STEP)
 	  point--;
 	  
-	lv2_sense_point(point, point_axis, &sense_val);
+	lv2_sense_point(point, point_axis, &sense_val, pSenseInfo->sense_delay);
 	if (sense_val > FSSC_THRESHOLD)
 	  {
 	     *endPoint = point;
@@ -413,10 +434,9 @@ int lv2_find_ss_coords(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
     beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
     beam_setting |= LASERENABLE | DIMBEAM;   // light move, enable laser.
     outb(beam_setting, LG_IO_CNTRL2);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val);
+    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
+    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
+    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
 
     // Turn on beam, bright intensity
     beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
@@ -448,6 +468,81 @@ int lv2_find_ss_coords(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
     return(0);
 }
 
+int lv2_super_scan(struct lv2_dev *priv, struct lv2_ss_sense_info *pSenseInfo)
+{
+    struct write_sense_cs_data    *pSenseData;
+    struct lv2_sense_line_data     new_point;
+    struct lv2_xypoints            xyData;
+    uint32_t                       i;
+    uint8_t                        sense_val;
+    uint8_t                        beam_setting;
+    
+    pSenseData = (struct write_sense_cs_data *)priv->pSenseBuff;
+    if (pSenseData == NULL)
+      {
+	printk("AV-FSSC-BOX:  Sensor buffer not allocated properly\n");
+	return(-ENOMEM);
+      }
+
+    // Make sure to take device lock before starting.
+    spin_lock(&priv->lock);
+
+    // Clean slate with read sense buffer
+    memset((uint8_t *)pSenseData, 0, pSenseInfo->numPoints * pSenseInfo->numLines * sizeof(struct write_sense_fssc_data));
+        
+    // These values are pushed from user & are constant
+    new_point.step        = pSenseInfo->step;
+    new_point.numPoints   = pSenseInfo->numPoints;
+    new_point.point_delay = pSenseInfo->point_delay;
+    new_point.sense_buf_idx = 0;
+    new_point.point_delay = SENSOR_MIN_DELAY;
+    
+    // Start with input X,Y
+    new_point.point  = pSenseInfo->yData;
+    
+    // NOTE:  Leave next lines as-is.
+    // Sometimes there's a spike when beam is turned on,
+    // so do per-point write-sense for first 2 points
+    // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
+    beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
+    beam_setting |= LASERENABLE | DIMBEAM;   // light move, enable laser.
+    outb(beam_setting, LG_IO_CNTRL2);
+    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
+    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
+    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
+
+    // Turn on beam, bright intensity
+    beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
+    beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
+    outb(beam_setting, LG_IO_CNTRL2);
+
+    for (i = 0; i < pSenseInfo->numLines; i++)
+      {
+	// Go right (X-ADD)
+	// Move xy in dark to position
+	xyData.xPoint = pSenseInfo->xData;
+	xyData.yPoint = pSenseInfo->yData + (i * pSenseInfo->numLines);
+	lv2_move_xydata_dark((struct lv2_xypoints *)&xyData);
+
+	// Sense left across line
+	new_point.point  = pSenseInfo->xData;
+	lv2_senseX_add(pSenseData, &new_point);
+	new_point.sense_buf_idx += pSenseInfo->numPoints;
+	
+	// Go left (X-SUB)
+	// Move xy in dark to position
+	xyData.xPoint = pSenseInfo->xData + (new_point.numPoints * new_point.step);
+	xyData.yPoint = pSenseInfo->yData + (i * pSenseInfo->numLines);
+	lv2_move_xydata_dark((struct lv2_xypoints *)&xyData);
+
+	// Sense right across line
+	new_point.point = pSenseInfo->xData + (new_point.numPoints * new_point.step);
+	lv2_senseX_sub(pSenseData, &new_point);
+	new_point.sense_buf_idx += pSenseInfo->numPoints;
+      }
+    return(0);
+}
+
 void lv2_sense_one_ypoint(struct lv2_dev *priv, struct lv2_sense_one_info *pSenseInfo)
 {
     struct write_sense_cs_data    *pSenseData=(struct write_sense_cs_data *)priv->pSenseBuff;
@@ -459,7 +554,7 @@ void lv2_sense_one_ypoint(struct lv2_dev *priv, struct lv2_sense_one_info *pSens
     
     // About to write to sensor buffer, so lock now.
     point = pSenseInfo->data;
-    lv2_sense_point(point, LV2_YPOINT, &sense_val);
+    lv2_sense_point(point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
     pSenseData[pSenseInfo->index].sense_val = ~sense_val;
     pSenseData[pSenseInfo->index].point = point;
     printk("Sense yPoint[%d]=%x; sense_read_data=%x\n",pSenseInfo->index, point, pSenseData[pSenseInfo->index].sense_val);
@@ -477,7 +572,7 @@ void lv2_sense_one_xpoint(struct lv2_dev *priv, struct lv2_sense_one_info *pSens
     // About to write to sensor buffer, so lock now.
     spin_lock(&priv->lock);
     point = pSenseInfo->data;
-    lv2_sense_point(point, LV2_YPOINT, &sense_val);
+    lv2_sense_point(point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
     pSenseData[pSenseInfo->index].sense_val = ~sense_val;
     pSenseData[pSenseInfo->index].point = point;
     printk("Sense xPoint[%d]=%x; rtn_data=%x; buf_data=%x\n",pSenseInfo->index, point, sense_val, pSenseData[pSenseInfo->index].sense_val);
@@ -548,7 +643,13 @@ static int lv2_proc_cmd(struct cmd_rw *p_cmd_data, struct lv2_dev *priv)
 	lv2_move_xydata_lite((struct lv2_xypoints *)&p_cmd_data->base.cmd_data.xyPoints);
 	break;
       case CMDW_LV2_FIND_SS_COORDS:
-	return(lv2_coarse_scan_box(priv, (struct lv2_sense_info *)&p_cmd_data->base.cmd_data.senseData));
+	return(lv2_find_ss_coords(priv, (struct lv2_sense_info *)&p_cmd_data->base.cmd_data.senseData));
+	break;
+      case CMDW_LV2_COARSE_SCAN_BOX_DARK:
+	return(lv2_coarse_scan_box_dark(priv, (struct lv2_sense_info *)&p_cmd_data->base.cmd_data.senseData));
+	break;
+      case CMDW_LV2_SUPER_SCAN:
+	return(lv2_super_scan(priv, (struct lv2_ss_sense_info *)&p_cmd_data->base.cmd_data.ss_senseData));
 	break;
       default:
 	printk(KERN_ERR "\nAV-LV2:  CMDW %d option not found", p_cmd_data->base.hdr.cmd);
@@ -581,8 +682,15 @@ ssize_t lv2_read(struct file *file, char __user *buffer, size_t count, loff_t *f
       }    
     if ((count<=0) || (count > priv->sense_buff_size))
       {
-	spin_unlock(&priv->lock);
+ 	spin_unlock(&priv->lock);
+	printk(KERN_ERR "\nAV-LV2: READ bad count=%d to sensor buffer", (int)count);
 	return(-EINVAL);
+      }
+    if (!priv->pSenseBuff)
+      {
+ 	spin_unlock(&priv->lock);
+	printk(KERN_ERR "\nAV-LV2: READ bad pointer to sensor buffer");
+	return(-EBADF);
       }
     /* sensor scan has been done */
     if (copy_to_user(buffer, priv->pSenseBuff, count))
@@ -591,7 +699,6 @@ ssize_t lv2_read(struct file *file, char __user *buffer, size_t count, loff_t *f
 	return(-EFAULT);
       }
     // All done with sensing, prep for next one.
-    kfree(priv->pSenseBuff);
     spin_unlock(&priv->lock);
     return(count);
 }
@@ -649,6 +756,12 @@ static int lv2_dev_init(struct lv2_dev *lv2_devp)
 
     // Initialize buffers to 0
     lv2_devp->sense_buff_size = MAX_TF_BUFFER;
+    if (!lv2_devp->sense_buff_size)
+      {
+	printk("AV-LV2:  Bad buffer size, %d\n", lv2_devp->sense_buff_size);
+	return(-ENOMEM);
+      }
+    printk("AV-LV2: sensor buffer allocated, size = %d", lv2_devp->sense_buff_size);
     lv2_devp->pSenseBuff = kzalloc(lv2_devp->sense_buff_size, GFP_KERNEL);
     if (lv2_devp->pSenseBuff == NULL)
       {

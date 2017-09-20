@@ -29,8 +29,10 @@ static char rcsid[] = "$Id$";
 
 // Static prototypes for local functions
 
-static int isOutOfBounds(int16_t point, int16_t step, uint16_t count);
-int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, int16_t *foundX, int16_t *foundY);
+static int isOutOfBounds(int16_t point, uint16_t step, uint32_t count);
+static int FindSensedTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY, int16_t step, int16_t *foundX, int16_t *foundY, uint32_t numPoints, uint32_t buf_size, uint8_t sense_threshold, uint8_t sense_num_hits);
+static int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, uint16_t step, int16_t *foundX, int16_t *foundY);
+static int SuperScanFindMatch(struct lg_master *pLgMaster, int16_t startX, int16_t startY, int16_t *foundX, int16_t *foundY, uint32_t numPoints, uint32_t numLines);
 
 //  Local functions
 /****************************************************************
@@ -48,21 +50,79 @@ int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t
  *                  0 if <point> is safe.
  *
  ***************************************************************/
-int isOutOfBounds(int16_t point, int16_t step, uint16_t count)
+int isOutOfBounds(int16_t point, uint16_t step, uint32_t count)
 {
-    if ((point - (step * count)) <= kMinSigned)
+    int16_t   endPoint;
+
+    endPoint = (point - (step * count)) & kMaxUnsigned;
+    syslog(LOG_NOTICE, "isOutOfBounds():  negative test point = %x", endPoint);
+    if (endPoint <= kMinSigned)
       return(-1);
-    if ((point + (step * count)) >= kMaxSigned)
+    endPoint = (point + (step * count)) & kMaxUnsigned;
+    syslog(LOG_NOTICE, "isOutOfBounds():  positive test point = %x", endPoint);
+    if (endPoint >= kMaxSigned)
       return(-1);
     return(0);
 }
 
+    
+static int FindSensedTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY, int16_t step, int16_t *foundX, int16_t *foundY, uint32_t numPoints, uint32_t buf_size, uint8_t sense_threshold, uint8_t sense_num_hits)
+{
+    struct write_sense_cs_data    *pSenseFound;
+    uint32_t                      low_index;
+    uint32_t                      i;
+    uint32_t                      found_count;
+    int                           rc;
+
+    pSenseFound = (struct write_sense_cs_data *)malloc(buf_size);
+    if (!pSenseFound)
+      {
+	syslog(LOG_ERR,"FindSensedTarget: ERROR trying to malloc buffer");
+	return(-1);
+      }
+    // Need to memset because typically the amount of sense data read in is much smaller than the actual
+    // allocated size in the driver
+    memset(pSenseFound, 0, buf_size);
+    rc = read(pLgMaster->fd_lv2, (uint8_t *)pSenseFound, buf_size);
+    if (rc < 0)
+      {
+	syslog(LOG_ERR,"FindSensedTarget: ERROR reading from LV2 device #%d, errno=%x", pLgMaster->fd_lv2, errno);
+	free((uint8_t *)pSenseFound);
+	return(-1);
+      }
+    // Analyze data, look for at least 3 hits
+    found_count = 0;
+    low_index = 0;
+    for (i = 0; i < numPoints; i++)
+      {
+	syslog(LOG_NOTICE,"FindSensedTarget: sense data[%d]=%x", i, pSenseFound[i].sense_val);
+	if (pSenseFound[i].sense_val <= sense_threshold)
+	  {
+	    syslog(LOG_NOTICE,"FindSensedTarget: found good sense data[%d]=%x", i, pSenseFound[i].sense_val);
+	    found_count++;
+	    if (pSenseFound[i].sense_val < pSenseFound[low_index].sense_val)
+	      low_index = i;
+	  }
+      }
+    if (found_count < sense_num_hits)
+      {
+	syslog(LOG_NOTICE,"FindSensedTarget: NO sense data found, match-count = %d", found_count);
+	free(pSenseFound);
+	return(-1);
+      }
+    // Lowest sense value wins
+    // FIXME---PAH---NEED TO JUST SEND BACK POINTS FROM DRIVER
+    *foundX = startX + (step * low_index);
+    *foundY = startY + (step * low_index);
+    free(pSenseFound);
+    return(0);
+}
 /****************************************************************
  *
  *  CoarseScanFindMatch()
  *
  *  Description:   Reads sense buffer at end of each box scan to
- *                 see if a target is found.  Criteria is 5 points
+ *                 see if a target is found.  Criteria is 3 points
  *                 minimum.
  *  Arguments:     <pLgMaster> (pointer to master structure)
  *                 <numPoints> (number of write-sense operations done
@@ -75,60 +135,30 @@ int isOutOfBounds(int16_t point, int16_t step, uint16_t count)
  *                          (x,y pair where target is found at)
  *
  ***************************************************************/
-int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, int16_t *foundX, int16_t *foundY)
+static int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, uint16_t step, int16_t *foundX, int16_t *foundY)
 {
-    struct write_sense_cs_data    *pSenseFound;
     int        rc;
-    uint32_t   low_index;
-    uint16_t   i;
-    uint8_t   found_count;
-
+    uint32_t   buf_size;
+    
     *foundX = kMaxUnsigned;
     *foundY = kMaxUnsigned;
 
-    // Sense Buffer is filled by driver
-    pSenseFound = (struct write_sense_cs_data *)malloc(MAX_TF_BUFFER);
-    if (!pSenseFound)
+    // Set up buffer to read sense data into from driver.
+    buf_size = numPoints * sizeof(struct write_sense_cs_data);  
+    if ((buf_size == 0) || (buf_size > MAX_TF_BUFFER))
       {
-	syslog(LOG_ERR,"CoarseScanFindMatch: ERROR trying to malloc buffer");
+	syslog(LOG_ERR,"CoarseScanFindMatch: ERROR invalid # Points=%d", buf_size);
 	return(-1);
       }
-    // Need to memset because typically the amount of sense data read in is much smaller than the actual
-    // allocated size in the driver
-    memset(pSenseFound, 0, MAX_TF_BUFFER);
-    rc = read(pLgMaster->fd_lv2, (uint8_t *)pSenseFound, MAX_TF_BUFFER);
+    syslog(LOG_NOTICE,"CoarseScanFindMatch: Start XY=%x,%x; numPoints = %d", startX, startY, numPoints);
+
+    rc = FindSensedTarget(pLgMaster, startX, startY, step, foundX, foundY, numPoints, buf_size, CS_SENSE_THRESHOLD, CS_SENSE_HITS);
     if (rc < 0)
-      {
-	syslog(LOG_ERR,"CoarseScanFindMatch: ERROR reading from LV2 device #%d, errno=%x", pLgMaster->fd_lv2, errno);
-	free((uint8_t *)pSenseFound);
-	return(-1);
-      }
-    // Analyze data, look for at least 3 hits
-    found_count = 0;
-    low_index = 0;
-    for (i = 0; i < numPoints; i++)
-      {
-	if (pSenseFound[i].sense_val <= COARSE_SCAN_THRESHOLD2)
-	  {
-	    syslog(LOG_NOTICE,"CoarseScanFindMatch: found good sense data[%d]=%x", i, pSenseFound[i].sense_val);
-	    found_count++;
-	    if (pSenseFound[i].sense_val < pSenseFound[low_index].sense_val)
-	      low_index = i;
-	  }
-      }
-    if (found_count < 5)
-      {
-	syslog(LOG_NOTICE,"CoarseScanFindMatch: NO sense data found, match-count = %d", found_count);
-	free(pSenseFound);
-	return(-1);
-      }
-    // Lowest sense value wins
-    *foundX = startX + low_index;
-    *foundY = startX + low_index;
-    free(pSenseFound);
+      return(rc);
+    syslog(LOG_NOTICE, "CoarseScanFindMatch: Found target XY = %x,%x", *foundX, *foundY);
     return(0);
 }
-
+	
 /****************************************************************
  *
  *  CoarseScan()
@@ -179,7 +209,7 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     usleep(250);
 
     // loop until out of grid points or target is found
-    while (box_loop_count != COARSE_SCAN_MAX_LOOPS)
+    while (box_loop_count < COARSE_SCAN_MAX_LOOPS)
       {
 	if (isOutOfBounds(sense_data.xData, sense_data.step, sense_data.numPoints))
 	  {
@@ -194,14 +224,15 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 	    break;
 	  }
 
-	syslog(LOG_NOTICE, "BOX_LOOP %d: START X,Y=%x,%x; step=%d, numPoints=%d",
+	syslog(LOG_NOTICE, "BOX_LOOP %d: X,Y=%x,%x; step=%d, numPoints=%d",
 	       box_loop_count, currentX, currentY, sense_data.step, sense_data.numPoints);
 	lv_box_sense_cmd(pLgMaster, (struct lv2_sense_info *)&sense_data);
     
-	ret = CoarseScanFindMatch(pLgMaster, sense_data.numPoints, startX, startY, foundX, foundY);
+	ret = CoarseScanFindMatch(pLgMaster, sense_data.numPoints, currentX, currentY, sense_data.step, foundX, foundY);
 	if (ret == 0)
 	  {
-	    syslog(LOG_NOTICE, "CoarseScan() END:  found x=%x; found y=%x; numLoops=%d",*foundX, *foundY, box_loop_count);
+	    syslog(LOG_NOTICE, "CoarseScan() TARGET FOUND:  current XY = %x,%x; found XY =%x,%x; numLoops=%d",
+		   currentX, currentY, *foundX, *foundY, box_loop_count);
 	    return(0);
 	  }
 	// Adjust X & Y back to bottom left corner of box
@@ -253,9 +284,9 @@ int FindSuperScanCoords(struct lg_master *pLgMaster, int16_t startX, int16_t sta
 	return(-1);
       }
 
-    // numPoints not used for this type of search
+    // Set up parameters for driver scan
     sense_data.step = FSSC_SCAN_STEP;
-    sense_data.numPoints = 0;
+    sense_data.numPoints = FSSC_SCAN_NUMPOINTS;
    
     sense_data.xData = startX;
     sense_data.yData = startY;
@@ -296,21 +327,60 @@ int FindSuperScanCoords(struct lg_master *pLgMaster, int16_t startX, int16_t sta
     return(0);
 }
 
-int ScanEnd(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
-		      int16_t *foundX, int16_t *foundY)
+/****************************************************************
+ *
+ *  SuperScanFindMatch()
+ *
+ *  Description:   Reads sense buffer at end of each box scan to
+ *                 see if a target is found.  Criteria is 5 points
+ *                 minimum.  Threshold is <= 0x30
+ *  Arguments:     <pLgMaster> (pointer to master structure)
+ *                 <numPoints> (number of write-sense operations done
+ *                             during this search)
+ *                 <startX> <startY>  (x,y pair that started search)
+ *                 <read_sense_sz>  (size of sense read buffer) 
+ *
+ *  Returns:       -1 if no target is found.
+ *                  0 if target found; <*foundX> <*foundY>
+ *                          (x,y pair where target is found at)
+ *
+ ***************************************************************/
+static int SuperScanFindMatch(struct lg_master *pLgMaster, int16_t startX, int16_t startY, int16_t *foundX, int16_t *foundY, uint32_t numPoints, uint32_t numLines)
 {
-    // FIXME---PAH---TBD
-    // show targets, write out log files
+    int        rc;
+    uint32_t   buf_size;
+    
+    *foundX = kMaxUnsigned;
+    *foundY = kMaxUnsigned;
+
+    // Set up buffer to read sense data into from driver.
+    buf_size = numPoints * numLines * sizeof(struct write_sense_cs_data);  
+    if ((buf_size == 0) || (buf_size > MAX_TF_BUFFER))
+      {
+	syslog(LOG_ERR,"SuperScanFindMatch: ERROR invalid # Points=%d", buf_size);
+	return(-1);
+      }
+
+    rc = FindSensedTarget(pLgMaster, startX, startY, SUPER_SCAN_STEP, foundX, foundY, numPoints, buf_size, SS_SENSE_THRESHOLD, SS_SENSE_HITS);
+    if (rc < 0)
+      return(rc);
+    syslog(LOG_NOTICE, "SuperScanFindMatch: Found target XY = %x,%x", *foundX, *foundY);
     return(0);
 }
+	
 /****************************************************************
  *
  *  SuperScan()
  *
- *  Description:   Sends command to LV2 device driver to perform a line search
+ *  Description:   Sends command to LV2 device driver to perform
+ *                 multiple line search in a square grid based on
+ *                 dimensions of potential target found during the
+ *                 FindSuperScanCoords() operation.
  *                 algorithm to find target dimensions & saves to log.
  *  Arguments:     <pLgMaster> (pointer to master structure)
  *                 <startX> <startY>  (x,y pair that start search)
+ *                 <numLines>         (number of lines to search)
+ *                 <numPoints>        (number of points per line)
  *
  *  Returns:       -1 if no target is found.
  *                  0 if target found; <*foundX> <*foundY>
@@ -320,9 +390,37 @@ int ScanEnd(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
  *
  ***************************************************************/
 int SuperScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
-		      int16_t *foundX, int16_t *foundY)
+	      uint32_t numLines, uint32_t numPoints, int16_t *foundX, int16_t *foundY)
 {
-    // FIXME---PAH---TBD
+    struct lv2_ss_sense_info   sense_data;
+    struct lv2_xypoints        xydata;
+    int                        rc;
+
+    sense_data.point_delay = DEFAULT_SENSE_DELAY;    // FIXME---PAH---Can be eliminated or user-defined?
+    sense_data.step        = SUPER_SCAN_STEP;
+    sense_data.numPoints   = numPoints;
+    sense_data.numLines    = numLines;
+    sense_data.xData       = startX;
+    sense_data.yData       = startY;
+
+    // First move mirrors to start x,y location
+    xydata.xPoint = startX; 
+    xydata.yPoint = startY; 
+    lv_setpoints_dark(pLgMaster, (struct lv2_xypoints *)&xydata);
+    usleep(250);
+
+    // Send super-scan command to driver
+    lv_super_scan_sense_cmd(pLgMaster, (struct lv2_ss_sense_info *)&sense_data);
+    
+    // Sift through the data to find center of target
+    rc = SuperScanFindMatch(pLgMaster, startX, startY, foundX, foundY, numPoints, numLines);
+    if (rc < 0)
+      {
+	syslog(LOG_ERR,"SuperScan(): Target NOT found");
+	return(rc);
+      }
+    
+    syslog(LOG_NOTICE, "SuperScan() TARGET FOUND AT:  %x,%x", *foundX, *foundY);
     return(0);
 }
 
@@ -352,7 +450,6 @@ int FindTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     // Next phase, find endpoints for super-fine scan
     startX = *foundX;
     startY = *foundY;
-    return(0);
     rc = FindSuperScanCoords(pLgMaster, startX, startY, foundX, foundY, &numLines, &numPoints);
     if (rc)
       return(rc);
@@ -370,11 +467,14 @@ int FindTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     syslog(LOG_NOTICE, "FindSSCoords(): Found target at x=%x,y=%x, numPoints=%d, numLines=%d", *foundX, *foundY, numPoints, numLines);
     startX = *foundX;
     startY = *foundY;
-    rc = SuperScan(pLgMaster, startX, startY, foundX, foundY);
+    rc = SuperScan(pLgMaster, startX, startY, numLines, numPoints, foundX, foundY);
     if (rc)
-      return(rc);
+      {
+	syslog(LOG_NOTICE, "TargetFind(): TARGET NOT FOUND");
+	return(rc);
+      }
     startX = *foundX;
     startY = *foundY;
-    rc = ScanEnd(pLgMaster, startX, startY, foundX, foundY);
-    return(rc);
+    syslog(LOG_NOTICE, "TargetFind(): Found target at XY = %x,%x", *foundX, *foundY);
+    return(0);
 }

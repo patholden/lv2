@@ -37,6 +37,11 @@ enum lv2_step_type {
     LV2_SUB_STEP=2,
 };
 
+enum lv2_laser_state {
+LV2_LASER_ON=1,
+LV2_LASER_OFF=2,
+};
+  
 // state machine defines
 enum lg_states {
     LGSTATE_IDLE=0,

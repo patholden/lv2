@@ -497,7 +497,7 @@ int InitBoard (struct lg_master *pLgMaster)
 	return(-1);
       }
     
-#if 0
+#ifdef NEW_TFIND
     pLgMaster->fd_lv2 = open("/dev/lv2", O_RDWR);
     if (pLgMaster->fd_lv2 < 0)
       {

@@ -49,19 +49,9 @@ static void do_write_dark_xydata(int16_t x, int16_t y)
     lv_setpoints_dark(pConfigMaster, &xydata);
     return;
 }
-static void do_write_xydata(int16_t x, int16_t y)
-{
-    struct lv2_xypoints   xydata;
-
-    xydata.xPoint = x;
-    xydata.yPoint = y;
-    lv_setpoints_lite(pConfigMaster, &xydata);
-    return;
-}
 int main( int argc, char ** argv )
 {
     int        error;
-    int16_t    i;
     int16_t    foundX;
     int16_t    foundY;
     int16_t    inputX;
@@ -70,8 +60,7 @@ int main( int argc, char ** argv )
     // Make sure user entered x & y coords
     if(argc < 3)
       {
-	//	printf("Syntax: box_test <x> <y> <step> <count> <write-delay>\n");
-		printf("Syntax: box_test <x> <y>\n");
+	printf("Syntax: box_test <x> <y> <sense-delay>\n");
 	exit(EXIT_FAILURE);
       }
 
@@ -101,6 +90,9 @@ int main( int argc, char ** argv )
     syslog(LOG_ERR,"laser device %d opened successfully", pConfigMaster->fd_lv2);
     do_write_dark_xydata(inputX,inputY);
     usleep(1000);
+
+    foundX = 0xFFFF;
+    foundY = 0xFFFF;
     error = CoarseScan(pConfigMaster, inputX, inputY, &foundX, &foundY);
     if (error)
       {
@@ -112,20 +104,7 @@ int main( int argc, char ** argv )
 	syslog(LOG_NOTICE, "LV_BOX_TEST: CoarseScan target NOT FOUND");
 	return(-1);
       }
+    do_write_dark_xydata(inputX,inputY);
     syslog(LOG_NOTICE, "LV_BOX_TEST: CoarseScan Found target at %x,%x", foundX, foundY);
-    // blink target location on & off 3 times
-    for (i=0; i < 3; i++)
-      {
-	do_write_dark_xydata(foundX, foundY);
-	sleep(1);
-	do_write_xydata(foundX, foundY);
-	sleep(1);
-	do_write_dark_xydata(foundX, foundY);
-	sleep(1);
-	do_write_xydata(foundX, foundY);
-	sleep(1);
-      }
-    
-    syslog(LOG_NOTICE,"LV_BOX_TEST: CoarseScan Test complete for /dev/lv2, fd %d",pConfigMaster->fd_lv2);
     exit(EXIT_SUCCESS);
 }

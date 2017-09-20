@@ -25,7 +25,7 @@ USERINCLUDE    := \
 	-I./ \
 	-I$(LNXHDRDIR)/include
 ### CFLAGS = -g -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
-CFLAGS = -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
+CFLAGS = -D NEW_TFIND -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
 AGS_OBJECTS = Main.o \
 	      L3DTransform.o \
 	      AngleCorrections.o \
@@ -93,7 +93,7 @@ compile.h:
 	@mv -f .ver $@
 
 clean:
-	rm -f *.o agsd compile.h
+	rm -f *.o agsd compile.h *~
 usb_install:
 	cp $(AGSCFGDIR)/S95agsd $(BUILDROOTTGTDIR)/etc/init.d
 	chmod 777 $(AGSCFGDIR)/S50sshd

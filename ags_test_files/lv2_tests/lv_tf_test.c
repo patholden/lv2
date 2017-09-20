@@ -3,12 +3,12 @@
  * Aligned Vision new laser device tests                     *
  * Copyright 2017.                                           *
  *                                                           *
- * Test Name:  lv_coarse_scan_test                           *
- * Command  :  "lv_coarse_scan_test"                         *
- * Input    :    startX, startY, step, count, and            *
- *               write-wait-delay are set by user.           *
+ * Test Name:  lv_tf_test                                    *
+ * Command  :  "lv_tf_test"                                  *
+ * Input    :    startX, startY, and write-wait-delay        *
+ *               are set by user.                            *
  * Description:  This test exercises the new target-find     *
- *               coarse-scan function.                       *
+ *               function.                                   *
  *                                                           *
  ************************************************************/
 #include <stdint.h>
@@ -70,8 +70,7 @@ int main( int argc, char ** argv )
     // Make sure user entered x & y coords
     if(argc < 3)
       {
-	//	printf("Syntax: box_test <x> <y> <step> <count> <write-delay>\n");
-		printf("Syntax: box_test <x> <y>\n");
+	printf("Syntax: box_test <x> <y>\n");
 	exit(EXIT_FAILURE);
       }
 

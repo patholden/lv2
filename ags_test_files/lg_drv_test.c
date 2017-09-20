@@ -31,7 +31,7 @@
 #include <linux/laser_api.h>
 #include "sinusoid.h"
 
-uint8_t lg_in_data[MAX_TGFIND_BUFFER];
+uint8_t lg_in_data[MAX_TF_BUFFER];
 
 int
 main( int argc, char ** argv )

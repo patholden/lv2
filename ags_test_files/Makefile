@@ -8,7 +8,7 @@ LD=$(TOOLDIR)-ld
 AS=$(TOOLDIR)-as
 AR=$(TOOLDIR)/x86_64-buildroot-linux-uclibc-ar
 LDFLAGS=-Wl,--sysroot=$(STAGING_DIR) -Wl,--error-poison-system-directories -L$(STAGING_DIR)/lib -L$(STAGING_DIR)/usr/lib -lc -lm
-CFLAGS = -g -march=atom
+CFLAGS = -g -march=atom -D NEW_TFIND
 TEST_EXEC = ramp ramp1 ramp2 ramp9 tgfind_in step xy xytest xy_io ttyloop1 ttyloop2 sinusoid1 lg_drv_test lg_drv_sine readio writeio tgfind2 tgfind_timing
 TEST_OBJS = ramp.o ramp2.o ramp9.o tgfind_in.o step.o xy.o xytest.o xy_io.o ttyloop1.o ttyloop2.o sinusoid.o sinusoid1.o lg_drv_test.o lg_drv_sine.o readio writeio tgfind2.o tgfind_timing.o
 

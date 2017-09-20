@@ -147,6 +147,7 @@ int main( int argc, char ** argv )
 	    do_write_xydata(currentX, currentY);
 	    usleep(100);
 	  }
+	do_write_dark_xydata(inputX,inputY);
 	syslog(LOG_NOTICE, "X-Axis-Left Line Test Complete:  StartX=%x, StartY=%x, Step=%d\n", inputX,inputY, ~step);
 	usleep(1000);
       }

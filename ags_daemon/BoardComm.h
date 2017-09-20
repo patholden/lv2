@@ -32,13 +32,8 @@
 #define FINESEARCH    2
 #define SUPERSEARCH   3
 #define kMaxUnsigned      0xFFFF
-#if 1
 #define kMaxSigned        0x7FFF
 #define kMinSigned        (-kMaxSigned)
-#else
-#define kMaxSigned        0xFFFF
-#define kMinSigned        0
-#endif
 #define kBinaryCenter	   0.50
 #define kCoarseFactorDef   8
 #define kCoarseFactorMin   1
@@ -202,8 +197,9 @@ struct lg_master {
 #ifdef ZDEBUG
   int             debug_count;
 #endif
+#ifdef NEW_TFIND
   int             fd_lv2;
-
+#endif
 };
 
 typedef struct ags_bkgd_thread_struct

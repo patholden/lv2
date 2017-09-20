@@ -131,16 +131,18 @@ typedef enum{
   CMDW_LV2_SENSE_YPOINT,
   CMDW_LV2_COARSE_SCAN_BOX,
   CMDW_LV2_FIND_SS_COORDS,
+  CMDW_LV2_COARSE_SCAN_BOX_DARK,
+  CMDW_LV2_SUPER_SCAN,
   CMDW_LAST                    // DO NOT ADD BELOW HERE
 }lg_cmd_enums;
 
 // CMD-WRITE DEFINES
 #define CMD_LAST CMDW_LAST    // NOTE:  This is used by lg_write to validate
                               // incoming commands.
-#define MAX_TARGETS       24
-#define MAX_XYPOINTS    2048 * MAX_TARGETS * 2 
-#define MAX_LG_BUFFER   MAX_XYPOINTS * sizeof(struct lg_xydata)  /* maximum size of lg_data[] */
-#define MAX_TF_BUFFER MAX_XYPOINTS * sizeof(struct write_sense_cs_data)  // maximum number of target-find readings
+#define MAX_TARGETS      24
+#define MAX_XYPOINTS     2048 * MAX_TARGETS * 2 
+#define MAX_LG_BUFFER    MAX_XYPOINTS * sizeof(struct lg_xydata)  /* maximum size of lg_data[] */
+#define MAX_TF_BUFFER    MAX_XYPOINTS * sizeof(struct write_sense_cs_data)  // maximum number of target-find readings
 #define DO_TEST_DISPLAY  0x1     // USED BY DIAGS.  Will simulate DISPLAY mode
 #define FSSC_THRESHOLD   0xF0    // Indicator for target-not-found when looking
                                  //   for super-scan endpoints
@@ -155,6 +157,7 @@ struct event_times {
   time_t    last_gap_usec;    // Used to track time between lg_timer events from user side
   time_t    last_exec_usec;   // Used to track execution time from user side
 };
+// FIXME---PAH---NEED TO USE BOTH X & Y POINTS HERE
 struct write_sense_cs_data
 {
   int16_t   point;
@@ -193,11 +196,12 @@ struct lv2_xypoints {
 };
 struct lv2_sense_line_data {
   uint32_t  sense_buf_idx;
+  uint32_t  numPoints;
   uint16_t  step;
-  uint16_t  numPoints;
   int16_t   point;
+  uint8_t   sense_delay;
   uint8_t   point_delay;
-  uint8_t   pad;
+  uint8_t   pad[3];
 };
 struct write_sense_fssc_data
 {
@@ -207,17 +211,28 @@ struct write_sense_fssc_data
   struct lv2_xypoints   TopEndpoints;
 };
 struct lv2_sense_info {
-  uint16_t   numPoints;        // Number of write/sense operations to perform
-  uint16_t   step;             // XY step, can be +/-
-  int16_t   xData;            // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
-  int16_t   yData;            // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
-  uint8_t   point_delay;      // usec delay between sense operations
-  uint8_t   unused[3];           // Pad out for union conformance
+  uint32_t   numPoints;        // Number of write/sense operations to perform
+  uint16_t   step;             // Number of steps between points
+  int16_t   xData;             // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
+  int16_t   yData;             // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
+  uint8_t   point_delay;       // usec delay between sense operations
+  uint8_t   sense_delay;       // usec delay between write-to-dac & read-from-sense-io
+  uint8_t   pad[2];            // pad for union size match
+};
+struct lv2_ss_sense_info {
+  uint32_t   numPoints;        // Number of write/sense operations to perform
+  uint32_t   numLines;         // Number of lines to perform super-scan search
+  uint16_t   step;             // Number of steps between points
+  int16_t   xData;             // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
+  int16_t   yData;             // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
+  uint8_t   point_delay;       // usec delay between sense operations
+  uint8_t   sense_delay;       // usec delay between write-to-dac & read-from-sense-io
 };
 
 struct lv2_sense_one_info {
   int16_t   data;       // Needs to be signed to deal with LTC1597 bipolar data
-  uint16_t  pad;
+  uint8_t   sense_delay;      // Pad out for union conformance
+  uint8_t   pad;
   uint32_t  index;
 };
 struct lg_move_data
@@ -266,8 +281,9 @@ struct cmd_rw_base {
     struct lg_val64 dat64;
     struct lg_xydata xydata;
     struct lg_xydelta xydelta;
-    struct lv2_sense_info senseData;
     struct lv2_xypoints   xyPoints;
+    struct lv2_sense_info senseData;
+    struct lv2_ss_sense_info ss_senseData;
   }cmd_data;
 };
 struct cmd_rw_movedata {
