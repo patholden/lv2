@@ -170,14 +170,9 @@ static void lv2_sense_point(int16_t point, uint8_t point_type, uint8_t *sense_va
     // Write x-data to DAC
     lv2_send_to_dac(point, STROBE_ON_LASER_ON, STROBE_OFF_LASER_ON, point_type);
 
-    // Wait x usec (user-defined)
-    printk("AV-LV2: write-wait is %d usec\n", sense_delay);
-    udelay(sense_delay);
-
     // Read from target-find register
     // Debounce to get rid of false-positive target finds
     *sense_val = inb(TFPORTRL);
-    printk("AV-LV2: sense-byte is %d\n", *sense_val);
     return;
 }
 void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct write_sense_cs_data *pSenseData, uint32_t point_axis, uint8_t step_direction)
@@ -203,7 +198,7 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	  point -= pSenseInfo->step;
 	  
 	lv2_sense_point(point, point_axis, &sense_val, pSenseInfo->sense_delay);
-	pSenseData[pt_idx].sense_val = ~sense_val;
+	pSenseData[pt_idx].sense_val = sense_val;
 	pSenseData[pt_idx].point = point;
 	printk("AV-LV2:  LINE_WS_OP sense point=%x; sense_read_data[%d]=%x\n",point, pt_idx, pSenseData[pt_idx].sense_val);
 	pt_idx++;
@@ -555,7 +550,7 @@ void lv2_sense_one_ypoint(struct lv2_dev *priv, struct lv2_sense_one_info *pSens
     // About to write to sensor buffer, so lock now.
     point = pSenseInfo->data;
     lv2_sense_point(point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
-    pSenseData[pSenseInfo->index].sense_val = ~sense_val;
+    pSenseData[pSenseInfo->index].sense_val = sense_val;
     pSenseData[pSenseInfo->index].point = point;
     printk("Sense yPoint[%d]=%x; sense_read_data=%x\n",pSenseInfo->index, point, pSenseData[pSenseInfo->index].sense_val);
     return;
@@ -573,7 +568,7 @@ void lv2_sense_one_xpoint(struct lv2_dev *priv, struct lv2_sense_one_info *pSens
     spin_lock(&priv->lock);
     point = pSenseInfo->data;
     lv2_sense_point(point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
-    pSenseData[pSenseInfo->index].sense_val = ~sense_val;
+    pSenseData[pSenseInfo->index].sense_val = sense_val;
     pSenseData[pSenseInfo->index].point = point;
     printk("Sense xPoint[%d]=%x; rtn_data=%x; buf_data=%x\n",pSenseInfo->index, point, sense_val, pSenseData[pSenseInfo->index].sense_val);
     return;
@@ -842,6 +837,7 @@ static int lv2_dev_probe(struct platform_device *plat_dev)
 
     printk(KERN_INFO "\nAV-LV2:laser misc-device created\n");
 
+#if 0
     // Obtain IO space for device
     if (!request_region(LG_BASE, LASER_REGION, DEV_NAME_LV2))
       {
@@ -850,7 +846,8 @@ static int lv2_dev_probe(struct platform_device *plat_dev)
 	printk(KERN_CRIT "\nAV-LV2:  Unable to get IO regs");
 	return(-EBUSY);
       }
-
+#endif
+    
     rc = lv2_dev_init(lv2_dev);
     if (rc)
       {

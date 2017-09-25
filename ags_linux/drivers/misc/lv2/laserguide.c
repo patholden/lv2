@@ -39,7 +39,7 @@
 #define DEV_NAME_LGTTYS2 "lgttyS2"
 
 static struct lg_xydata lg_display_data[MAX_XYPOINTS];
-static uint16_t tgfind_word[3*MAX_TGFIND_BUFFER];
+static uint16_t tgfind_word[3*MAX_TF_BUFFER];
 uint32_t lg_qc_flag = 0;
 uint32_t lg_qc_counter = 0;
 int32_t  lg_hw_trigger = 0;
@@ -421,7 +421,7 @@ static int lg_proc_move_cmd(struct cmd_rw_movedata *p_cmd_move, struct lg_dev *p
 	priv->lg_sensor.nPoints = p_cmd_move->movedata.nPoints;
 	priv->lg_sensor.poll_freq = p_cmd_move->movedata.poll_freq;
 	priv->lg_sensor.do_coarse = p_cmd_move->movedata.do_coarse;
-	if (!priv->lg_sensor.nPoints || (priv->lg_sensor.nPoints > MAX_TGFIND_BUFFER))
+	if (!priv->lg_sensor.nPoints || (priv->lg_sensor.nPoints > MAX_TF_BUFFER))
 	  return(-EINVAL);
 	// default sensor period is 30usec, but it takes a while to get data from
 	// sense buffer.  old code used to access buffer via serial port (115200 baud, ie 86.8 usec)
@@ -451,7 +451,7 @@ static int lg_proc_move_cmd(struct cmd_rw_movedata *p_cmd_move, struct lg_dev *p
 	priv->lg_sensor.nPoints = p_cmd_move->movedata.nPoints;
 	priv->lg_sensor.poll_freq = p_cmd_move->movedata.poll_freq;
 	priv->lg_sensor.do_coarse = p_cmd_move->movedata.do_coarse;
-	if (!priv->lg_sensor.nPoints || (priv->lg_sensor.nPoints > MAX_TGFIND_BUFFER))
+	if (!priv->lg_sensor.nPoints || (priv->lg_sensor.nPoints > MAX_TF_BUFFER))
 	  return(-EINVAL);
 	// default sensor period is 30usec, but it takes a while to get data from
 	// sense buffer.  old code used to access buffer via serial port (115200 baud, ie 86.8 usec)
@@ -536,7 +536,7 @@ static int lg_proc_cmd(struct cmd_rw *p_cmd_data, struct lg_dev *priv)
   case CMDW_SETQCCOUNTER:
     if (p_cmd_data->base.hdr.length != sizeof(uint32_t))
       return(-EINVAL);
-    lg_qc_counter = p_cmd_data->base.dat32.val32;
+    lg_qc_counter = p_cmd_data->base.cmd_data.dat32.val32;
     break;
   case CMDW_STOP:
     priv->lg_state = LGSTATE_IDLE;
@@ -559,30 +559,30 @@ static int lg_proc_cmd(struct cmd_rw *p_cmd_data, struct lg_dev *priv)
   case CMDW_SETDELTA:
     if (p_cmd_data->base.hdr.length != sizeof(struct lg_xydata))
       return(-EINVAL);
-    priv->lg_delta.xdata = p_cmd_data->base.xydata.xdata;
-    priv->lg_delta.ydata = p_cmd_data->base.xydata.ydata;
+    priv->lg_delta.xdata = p_cmd_data->base.cmd_data.xydata.xdata;
+    priv->lg_delta.ydata = p_cmd_data->base.cmd_data.xydata.ydata;
     break;
   case CMDW_GOANGLE:
     priv->lg_state    = LGSTATE_IDLE;
     if (p_cmd_data->base.hdr.length != sizeof(struct lg_xydata))
       return(-EINVAL);
     /* Disable state machine, PREPPING FOR NEXT COMMAND SEQUENCE */
-    priv->lg_goangle.xdata = p_cmd_data->base.xydata.xdata;
-    priv->lg_goangle.ydata = p_cmd_data->base.xydata.ydata;
-    priv->lg_goangle.ctrl_flags = p_cmd_data->base.xydata.ctrl_flags;
+    priv->lg_goangle.xdata = p_cmd_data->base.cmd_data.xydata.xdata;
+    priv->lg_goangle.ydata = p_cmd_data->base.cmd_data.xydata.ydata;
+    priv->lg_goangle.ctrl_flags = p_cmd_data->base.cmd_data.xydata.ctrl_flags;
     lg_write_io_to_dac(priv, (struct lg_xydata *)&priv->lg_goangle);
     break;
   case CMDW_SETROI:
     if (p_cmd_data->base.hdr.length != sizeof(uint32_t))
       return(-EINVAL);
-    lg_roi_del = p_cmd_data->base.dat32.val32;
+    lg_roi_del = p_cmd_data->base.cmd_data.dat32.val32;
     break;
   case CMDW_SETQCFLAG:
     if (p_cmd_data->base.hdr.length != sizeof(uint32_t))
       return(-EINVAL);
     // When a quick check is needed, this flag is set to non-zero
     // LGDISPLAY  automatically sets this to zero
-    lg_qc_flag = p_cmd_data->base.dat32.val32;
+    lg_qc_flag = p_cmd_data->base.cmd_data.dat32.val32;
     break;
   case CMDW_READYLEDON:
     priv->lg_ctrl2_store |= RDYLEDON;
@@ -766,7 +766,7 @@ ssize_t lg_read(struct file *file, char __user *buffer, size_t count, loff_t *f_
     if (!priv)
       return(-EBADF);
     
-    if ((count<=0) || (count > MAX_TGFIND_BUFFER))
+    if ((count<=0) || (count > MAX_TF_BUFFER))
       return(-EINVAL);
     if (priv->lg_state != LGSTATE_SENSEREADY)
 	return(-EBUSY);
@@ -902,7 +902,7 @@ static enum hrtimer_restart lg_evt_hdlr(struct hrtimer *timer)
 	//      2. wait for valid data.
 	lg_write_io_to_dac(priv, &priv->lg_sensor.xy_curpt);
 
-	if ((priv->lg_sensor.cur_index >= MAX_TGFIND_BUFFER) ||
+	if ((priv->lg_sensor.cur_index >= MAX_TF_BUFFER) ||
 	    ((priv->lg_sensor.cur_index - priv->lg_sensor.start_index) >= priv->lg_sensor.nPoints))
 	  priv->lg_state = LGSTATE_SENSEREADY;
 	else
@@ -923,7 +923,7 @@ static enum hrtimer_restart lg_evt_hdlr(struct hrtimer *timer)
 	return(HRTIMER_RESTART);
 	break;
       case LGSTATE_SENSEREAD:
-	if ((priv->lg_sensor.cur_index < MAX_TGFIND_BUFFER) &&
+	if ((priv->lg_sensor.cur_index < MAX_TF_BUFFER) &&
 	    ((priv->lg_sensor.cur_index - priv->lg_sensor.start_index) <= priv->lg_sensor.nPoints))
 	  {
 	    // Read in light-sensor info.
@@ -945,7 +945,7 @@ static enum hrtimer_restart lg_evt_hdlr(struct hrtimer *timer)
 	return(HRTIMER_RESTART);
 	break;
       case LGSTATE_TEST:
-	if ((priv->lg_sensor.cur_index < MAX_TGFIND_BUFFER) &&
+	if ((priv->lg_sensor.cur_index < MAX_TF_BUFFER) &&
 	    (priv->lg_sensor.cur_index <= 2000)
            )
 	  {
