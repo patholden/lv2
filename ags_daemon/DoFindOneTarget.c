@@ -26,7 +26,6 @@ static char rcsid[] = "$Id: DoFindOneTarget.c,v 1.1 2001/01/22 19:51:54 ags-sw E
 #include "3DTransform.h"
 
 #define	kNumberOfSensorSearchAttempts				5
-#define NEW_TFIND 1
 void DoFindOneTarget(struct lg_master *pLgMaster,
 		     struct parse_findonetgt_parms *pInp,
 		     uint32_t respondToWhom)

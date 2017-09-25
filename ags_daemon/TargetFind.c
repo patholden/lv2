@@ -29,9 +29,7 @@ static char rcsid[] = "$Id$";
 
 // Static prototypes for local functions
 
-static int isOutOfBounds(int16_t point, uint16_t step, uint32_t count);
 static int FindSensedTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY, int16_t step, int16_t *foundX, int16_t *foundY, uint32_t numPoints, uint32_t buf_size, uint8_t sense_threshold, uint8_t sense_num_hits);
-static int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, uint16_t step, int16_t *foundX, int16_t *foundY);
 static int SuperScanFindMatch(struct lg_master *pLgMaster, int16_t startX, int16_t startY, int16_t *foundX, int16_t *foundY, uint32_t numPoints, uint32_t numLines);
 
 //  Local functions
@@ -135,7 +133,7 @@ static int FindSensedTarget(struct lg_master *pLgMaster, int16_t startX, int16_t
  *                          (x,y pair where target is found at)
  *
  ***************************************************************/
-static int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, uint16_t step, int16_t *foundX, int16_t *foundY)
+int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, uint16_t step, int16_t *foundX, int16_t *foundY)
 {
     int        rc;
     uint32_t   buf_size;
@@ -179,7 +177,7 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 {
     struct lv2_sense_info   sense_data;
     struct lv2_xypoints     xydata;
-    int                     ret;
+    //    int                     ret;
     uint32_t                box_loop_count;
     int16_t                 currentX=startX;
     int16_t                 currentY=startY;
@@ -209,7 +207,8 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     usleep(250);
 
     // loop until out of grid points or target is found
-    while (box_loop_count < COARSE_SCAN_MAX_LOOPS)
+    //    while (box_loop_count < COARSE_SCAN_MAX_LOOPS)
+    while (box_loop_count < 10)
       {
 	if (isOutOfBounds(sense_data.xData, sense_data.step, sense_data.numPoints))
 	  {
@@ -228,6 +227,7 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 	       box_loop_count, currentX, currentY, sense_data.step, sense_data.numPoints);
 	lv_box_sense_cmd(pLgMaster, (struct lv2_sense_info *)&sense_data);
     
+#if 0
 	ret = CoarseScanFindMatch(pLgMaster, sense_data.numPoints, currentX, currentY, sense_data.step, foundX, foundY);
 	if (ret == 0)
 	  {
@@ -235,6 +235,7 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 		   currentX, currentY, *foundX, *foundY, box_loop_count);
 	    return(0);
 	  }
+#endif
 	// Adjust X & Y back to bottom left corner of box
 	sense_data.numPoints += ((box_loop_count * 2) + 2);
 	box_loop_count++;

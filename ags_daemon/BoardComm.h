@@ -2,6 +2,7 @@
 #define BOARDCOMM_H
 /*   $Id: BoardComm.h,v 1.20 2001/01/03 17:48:53 ags-sw Exp pickle $  */
 
+#define NEW_TFIND 1
 
 #define CURRENT_FPGA_VERSION 0x102
 #define DONTRESPOND  1      // command will NOT send response to PC host
@@ -17,7 +18,6 @@
 #define PARSE_HOBBS_LASER 4
 #define PROJ_VISION  1
 #define PROJ_LASER   2
-#define TGFIND_BUFF_SIZE  MAX_TGFIND_BUFFER * sizeof(int16_t)
 #define MAX_DOSENSE_RETRIES 20
 #define DOSENSE_LEVEL       30
 #define DOSENSE_MID       0x300
