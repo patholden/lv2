@@ -18,6 +18,9 @@ SENSE_LOOP_TEST_OBJS = lv_sense_loop_test.o  \
 COARSE_TEST_OBJS = lv_coarse_scan_test.o \
 		../../ags_daemon/Laser_lv2_If.o \
 		../../ags_daemon/TargetFind.o
+DARK_SCAN_TEST_OBJS = lv_coarse_scan_dark_test.o \
+		../../ags_daemon/Laser_lv2_If.o \
+		../../ags_daemon/TargetFind.o
 TFIND_TEST_OBJS = 	lv_tf_test.o \
 		../../ags_daemon/Laser_lv2_If.o \
 		../../ags_daemon/TargetFind.o
@@ -33,22 +36,25 @@ box_test: $(BOX_TEST_OBJS) ../../linux_headers/include/linux/laser_api.h
 	$(CC) $(LDFLAGS) -o $@ $(BOX_TEST_OBJS)
 coarse_scan_test: $(COARSE_TEST_OBJS) ../../linux_headers/include/linux/laser_api.h
 	$(CC) $(LDFLAGS) -o $@ $(COARSE_TEST_OBJS)
+dark_scan_test: $(DARK_SCAN_TEST_OBJS) ../../linux_headers/include/linux/laser_api.h
+	$(CC) $(LDFLAGS) -o $@ $(DARK_SCAN_TEST_OBJS)
 sense_one_test: $(SENSE_ONE_TEST_OBJS) ../../linux_headers/include/linux/laser_api.h
 	$(CC) $(LDFLAGS) -o $@ $(SENSE_ONE_TEST_OBJS)
 sense_loop_test: $(SENSE_LOOP_TEST_OBJS) ../../linux_headers/include/linux/laser_api.h
 	$(CC) $(LDFLAGS) -o $@ $(SENSE_LOOP_TEST_OBJS)
-all:  tf_test box_test coarse_scan_test sense_one_test sense_loop_test find_sscoords_test
+all:  tf_test box_test coarse_scan_test sense_one_test sense_loop_test find_sscoords_test dark_scan_test
 
 %.o: %.c ../../linux_headers/include/linux/laser_api.h
 	$(CC) -c -o $@ $(CFLAGS) -I$(INCLUDES) $<
 clean:
-	rm *.o box_test coarse_scan_test sense_one_test sense_loop_test tf_test find_sscoords_test
+	rm *.o box_test coarse_scan_test sense_one_test sense_loop_test tf_test find_sscoords_test dark_scan_test
 install:
 	chmod 755 tf_test box_test coarse_scan_test sense_one_test sense_loop_test find_sscoords_test
 	cp tf_test $(TEST_DIR)
 	cp find_sscoords_test $(TEST_DIR)
 	cp box_test $(TEST_DIR)
 	cp coarse_scan_test $(TEST_DIR)
+	cp dark_scan_test $(TEST_DIR)
 	cp sense_one_test $(TEST_DIR)
 	cp sense_loop_test $(TEST_DIR)
 burnusb:
