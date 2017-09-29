@@ -55,9 +55,23 @@ enum lg_states {
     LGSTATE_TEST
 };
 
+struct lv2_info {
+  // dev stuff first
+  spinlock_t              lock;
+  struct kref             ref;
+  wait_queue_head_t       wait;
+  struct list_head        free;
+  struct list_head        used;
+  // Start of actual lv2 private data
+  uint8_t                 *pSenseBuff;
+  uint32_t                sense_buff_size;
+  uint8_t                 pad[4];
+};
+
 struct lg_dev {
   // dev stuff first
   struct miscdevice       miscdev;
+  struct miscdevice 	  lgLV2;
   struct miscdevice 	  lgttyS1;
   struct miscdevice       lgttyS2;
   struct mutex            lg_mutex;
@@ -70,6 +84,7 @@ struct lg_dev {
   struct device           *dev;
   void __iomem	          *iobase;
   struct dentry           *dbg_entry;
+  struct lv2_info         lv2_data;          // LV2 device private data area
   // Start of actual lg private data
   struct hrtimer          lg_timer;
   struct timeval          last_ts;
@@ -97,5 +112,12 @@ struct lg_dev_ops {
   void (*lg_set_opticcmd)(struct device *dev, int optics_cmd);
   void (*lg_set_opticstat)(struct device *dev, int optics_status);
 };
+
+extern const struct file_operations lv2_fops;
+int lv2_dev_init(struct lv2_info *lv2_data);
+int lv2_open(struct inode *inode, struct file *file);
+ssize_t lv2_write(struct file *file, const char __user *buffer, size_t count, loff_t *f_pos);
+ssize_t lv2_read(struct file *file, char __user *buffer, size_t count, loff_t *f_pos);
+int lv2_release(struct inode *_inode, struct file *f);
 
 #endif  /*  _LASERGUIDE_H  */

@@ -33,8 +33,9 @@
 #include <linux/laser_dev.h>
 #include <linux/serial_reg.h>
 
-#define LG_VERSION 	 "0.3"
+#define LG_VERSION 	 "0.4"
 #define DEV_NAME   	 "laser"
+#define DEV_NAME_LV2   	 "lv2"
 #define DEV_NAME_LGTTYS1 "lgttyS1"
 #define DEV_NAME_LGTTYS2 "lgttyS2"
 
@@ -628,6 +629,7 @@ static int lg_proc_cmd(struct cmd_rw *p_cmd_data, struct lg_dev *priv)
     outb(priv->lg_ctrl2_store, LG_IO_CNTRL2);
     break;
   default:
+    
     printk(KERN_ERR "\nAGS-LG: CMDW %d option not found", p_cmd_data->base.hdr.cmd);
     break;
   }
@@ -1127,6 +1129,12 @@ struct miscdevice lg_ttyS2device = {
   .fops = &lg_ttyS2fops,
 };
 
+struct miscdevice lv2_device = {
+  .minor = MISC_DYNAMIC_MINOR,
+  .name = DEV_NAME_LV2,
+  .fops = &lv2_fops,
+};
+
 static void serial_port_init(void)
 {    //LGTTYS1 Front end serial port: 115200, N, 8, 1, no 'rupts, force DTR and RTS
   LG_SerialWrite(LG_TTYS1_BASE, UART_IER, 0);    // 'rupts off
@@ -1235,16 +1243,42 @@ static int lg_dev_probe(struct platform_device *plat_dev)
     lg_devp->miscdev.parent = lg_devp->dev;
     dev_set_drvdata(this_device, lg_devp);
     platform_set_drvdata(plat_dev, lg_devp);
-    printk(KERN_INFO "\nAGS-LG:laser misc-device created\n");
+    printk(KERN_INFO "AGS-LG: laser misc-device created\n");
 
     // Obtain IO space for device
     if (!request_region(LG_BASE, LASER_REGION, DEV_NAME))
       {
 	kfree(lg_devp);
 	misc_deregister(&lg_devp->miscdev);
-	printk(KERN_CRIT "\nUnable to get IO regs");
+	printk(KERN_CRIT "AGS-LG: Unable to get IO regs");
 	return(-EBUSY);
       }
+
+    // Setup LV2 Sensor misc device
+    lg_devp->lgLV2.minor = lv2_device.minor;
+    lg_devp->lgLV2.name = DEV_NAME_LV2;
+    lg_devp->lgLV2.fops = lv2_device.fops;
+    rc = misc_register(&lg_devp->lgLV2);
+    if (rc)
+      {
+	printk(KERN_ERR "AGS-LG:  Failed to register Laser misc_device, err %d \n", rc);
+	kfree(lg_devp);
+	return(rc);
+      }
+    this_device = lg_devp->lgLV2.this_device;
+    lg_devp->lgLV2.parent = lg_devp->dev;
+
+    // Initialize LV2 device
+    rc = lv2_dev_init((struct lv2_info *)&lg_devp->lv2_data);
+    if (rc)
+      {
+	printk(KERN_ERR "AGS-LG:  Failed to initialize device LV2, err %d \n", rc);
+	kfree(lg_devp);
+	return(rc);
+      }
+    dev_set_drvdata(this_device, lg_devp);
+    platform_set_drvdata(plat_dev, lg_devp);
+    printk(KERN_INFO "\nAGS-LG: Device lv2 created\n");
 
     // Setup lgttyS1 device
     lg_devp->lgttyS1.minor = lg_ttyS1device.minor;
@@ -1262,7 +1296,7 @@ static int lg_dev_probe(struct platform_device *plat_dev)
     lg_devp->lgttyS1.parent = lg_devp->dev;
     dev_set_drvdata(this_device, lg_devp);
     platform_set_drvdata(plat_dev, lg_devp);
-    printk(KERN_INFO "\nAGS-LG: Device lgttyS1 created\n");
+    printk(KERN_INFO "AGS-LG: Device lgttyS1 created\n");
 
     // Obtain IO space for lgttyS1 device
     if (!request_region(LG_TTYS1_BASE, LG_TTYS1_REGION, DEV_NAME_LGTTYS1))
@@ -1344,6 +1378,7 @@ static int lg_pdev_remove(struct platform_device *pdev)
   release_region(LG_TTYS1_BASE, LG_TTYS1_REGION);
   release_region(LG_TTYS2_BASE, LG_TTYS2_REGION);
   misc_deregister(&lg_devp->miscdev);
+  misc_deregister(&lg_devp->lgLV2);
   misc_deregister(&lg_devp->lgttyS1);
   misc_deregister(&lg_devp->lgttyS2);
   kfree(lg_devp);

@@ -32,32 +32,11 @@
 #include <linux/serial_reg.h>
 
 #define LG_VERSION 	 "0.4"
-#define DEV_NAME_LV2   	 "lv2"
 
 enum point_type {
   LV2_XPOINT=1,
   LV2_YPOINT,
   LV2_XYPOINT,
-};
-
-struct lv2_dev {
-  // dev stuff first
-  struct miscdevice       miscdev;
-  struct mutex            lg_mutex;
-  spinlock_t              lock;
-  struct kref             ref;
-  wait_queue_head_t       wait;
-  struct list_head        free;
-  struct list_head        used;
-  struct completion       completion;
-  struct device           *dev;
-  void __iomem	          *iobase;
-  struct dentry           *dbg_entry;
-  // Start of actual lv2 private data
-  struct timeval          last_ts;
-  uint8_t                 *pSenseBuff;
-  uint32_t                sense_buff_size;
-  uint8_t                 pad[3];
 };
 
 static void lv2_move_xydata_dark(struct lv2_xypoints *xyData);
@@ -236,13 +215,18 @@ void lv2_senseY_sub(struct write_sense_cs_data *pSenseWriteData, struct lv2_sens
     do_line_sense_operation(pSenseInfo, pSenseWriteData, LV2_YPOINT, LV2_SUB_STEP);
     return;
 }
-static void lv2_coarse_scan_box_op(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo, uint8_t laser_setting)
+static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo, uint8_t laser_setting)
 {      
     struct lv2_sense_line_data  new_point;
     struct write_sense_cs_data *pSenseData;
     uint8_t                     beam_setting;
     uint8_t                     sense_val;
 
+    if (priv == NULL)
+      {
+	printk("AV-CS-BOX:   Bad pointer to private data");
+	return;
+      }
     pSenseData = (struct write_sense_cs_data *)priv->pSenseBuff;
     if (pSenseData == NULL)
       {
@@ -302,7 +286,7 @@ static void lv2_coarse_scan_box_op(struct lv2_dev *priv, struct lv2_sense_info *
     lv2_senseX_sub(pSenseData, &new_point);
 }
 
-int lv2_coarse_scan_box(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
+int lv2_coarse_scan_box(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
 {
     lv2_coarse_scan_box_op(priv, pSenseInfo, LV2_LASER_ON);
 
@@ -310,7 +294,7 @@ int lv2_coarse_scan_box(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
     return(0);
 }
 
-int lv2_coarse_scan_box_dark(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
+int lv2_coarse_scan_box_dark(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
 {
     lv2_coarse_scan_box_op(priv, pSenseInfo, LV2_LASER_OFF);
     // Box complete, return to caller
@@ -393,7 +377,7 @@ void lv2_FindXEndpoint_sub(struct write_sense_fssc_data *pSenseWriteData, struct
     return;
 }
 
-int lv2_find_ss_coords(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
+int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
 {
     struct write_sense_fssc_data   *pSenseData;
     struct lv2_sense_line_data     new_point;
@@ -463,7 +447,7 @@ int lv2_find_ss_coords(struct lv2_dev *priv, struct lv2_sense_info *pSenseInfo)
     return(0);
 }
 
-int lv2_super_scan(struct lv2_dev *priv, struct lv2_ss_sense_info *pSenseInfo)
+int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
 {
     struct write_sense_cs_data    *pSenseData;
     struct lv2_sense_line_data     new_point;
@@ -538,7 +522,7 @@ int lv2_super_scan(struct lv2_dev *priv, struct lv2_ss_sense_info *pSenseInfo)
     return(0);
 }
 
-void lv2_sense_one_ypoint(struct lv2_dev *priv, struct lv2_sense_one_info *pSenseInfo)
+void lv2_sense_one_ypoint(struct lv2_info *priv, struct lv2_sense_one_info *pSenseInfo)
 {
     struct write_sense_cs_data    *pSenseData=(struct write_sense_cs_data *)priv->pSenseBuff;
     int16_t                    point;
@@ -555,7 +539,7 @@ void lv2_sense_one_ypoint(struct lv2_dev *priv, struct lv2_sense_one_info *pSens
     printk("Sense yPoint[%d]=%x; sense_read_data=%x\n",pSenseInfo->index, point, pSenseData[pSenseInfo->index].sense_val);
     return;
 }
-void lv2_sense_one_xpoint(struct lv2_dev *priv, struct lv2_sense_one_info *pSenseInfo)
+void lv2_sense_one_xpoint(struct lv2_info *priv, struct lv2_sense_one_info *pSenseInfo)
 {
     struct write_sense_cs_data    *pSenseData=(struct write_sense_cs_data *)priv->pSenseBuff;
     int16_t    point;
@@ -615,7 +599,7 @@ static void lv2_move_xydata_lite(struct lv2_xypoints *xyData)
   lv2_move_xydata(xyData, STROBE_ON_LASER_ON, STROBE_OFF_LASER_ON, 1);
     return;
 }      
-static int lv2_proc_cmd(struct cmd_rw *p_cmd_data, struct lv2_dev *priv)
+static int lv2_proc_cmd(struct cmd_rw *p_cmd_data, struct lv2_info *priv)
 {
     if (!priv)
       return(-ENODEV);
@@ -662,7 +646,10 @@ static int lv2_proc_cmd(struct cmd_rw *p_cmd_data, struct lv2_dev *priv)
 ******************************************************************/
 ssize_t lv2_read(struct file *file, char __user *buffer, size_t count, loff_t *f_pos)
 {
-    struct lv2_dev *priv = file->private_data;
+     struct lg_dev         *lg_devp = container_of(file->private_data, struct lg_dev, lgLV2);
+     struct lv2_info       *priv= (struct lv2_info *)&lg_devp->lv2_data;
+     //   struct lg_dev       *lg_devp=(struct lg_dev *)file->private_data;
+     //    struct lv2_info     *priv;
 
     // The buffer is filled during write-sense commands invoked
     // by user.  Sense data from target-find register is collected 
@@ -671,10 +658,8 @@ ssize_t lv2_read(struct file *file, char __user *buffer, size_t count, loff_t *f
     // can be ensured.
     // Only unlock once buffer is read (or if an error is encountered).
     if (!priv)
-      {
-	spin_unlock(&priv->lock);
-	return(-EBADF);
-      }    
+      return(-EBADF);
+
     if ((count<=0) || (count > priv->sense_buff_size))
       {
  	spin_unlock(&priv->lock);
@@ -700,12 +685,14 @@ ssize_t lv2_read(struct file *file, char __user *buffer, size_t count, loff_t *f
 
 ssize_t lv2_write(struct file *file, const char __user *buffer, size_t count, loff_t *f_pos)
 {
-    struct lv2_dev           *priv;
-    struct cmd_rw            *cmd_data;
-    struct cmd_hdr           *pHdr;
-    int                       rc;
+     struct lg_dev         *lg_devp = container_of(file->private_data, struct lg_dev, lgLV2);
+     struct lv2_info       *priv= (struct lv2_info *)&lg_devp->lv2_data;
+     //   struct lg_dev       *lg_devp=(struct lg_dev *)file->private_data;
+     //    struct lv2_info     *priv;
+    struct cmd_rw       *cmd_data;
+    struct cmd_hdr      *pHdr;
+    int                 rc;
 
-    priv = (struct lv2_dev *)file->private_data;
     if (!priv)
       return(-EBADF);
   
@@ -740,40 +727,35 @@ ssize_t lv2_write(struct file *file, const char __user *buffer, size_t count, lo
     return(count);
 } 
 
-static int lv2_dev_init(struct lv2_dev *lv2_devp)
+int lv2_dev_init(struct lv2_info *lv2_data)
 {
-    struct   lv2_xypoints   xyData;
-
-    if (!lv2_devp)
+    if (!lv2_data)
       return(-EINVAL);
   
-    do_gettimeofday(&lv2_devp->last_ts);
+    spin_lock_init(&lv2_data->lock);
+    INIT_LIST_HEAD(&lv2_data->free);
+    INIT_LIST_HEAD(&lv2_data->used);
+    init_waitqueue_head(&lv2_data->wait);
 
     // Initialize buffers to 0
-    lv2_devp->sense_buff_size = MAX_TF_BUFFER;
-    if (!lv2_devp->sense_buff_size)
+    lv2_data->sense_buff_size = MAX_TF_BUFFER;
+    if (!lv2_data->sense_buff_size)
       {
-	printk("AV-LV2:  Bad buffer size, %d\n", lv2_devp->sense_buff_size);
+	printk("AV-LV2:  Bad buffer size, %d\n", lv2_data->sense_buff_size);
 	return(-ENOMEM);
       }
-    printk("AV-LV2: sensor buffer allocated, size = %d", lv2_devp->sense_buff_size);
-    lv2_devp->pSenseBuff = kzalloc(lv2_devp->sense_buff_size, GFP_KERNEL);
-    if (lv2_devp->pSenseBuff == NULL)
+    printk("AV-LV2: sensor buffer allocated, size = %d\n", lv2_data->sense_buff_size);
+    lv2_data->pSenseBuff = kzalloc(lv2_data->sense_buff_size, GFP_KERNEL);
+    if (lv2_data->pSenseBuff == NULL)
       {
 	printk("AV-LV2:  Unable to malloc sensor buffer\n");
 	return(-ENOMEM);
       }
 
-    /* move to 0,0 position, laser disabled, beam off */
-    memset((uint8_t *)&xyData, 0, sizeof(struct lv2_xypoints));
-    lv2_move_xydata_dark((struct lv2_xypoints *)&xyData);
-      
-    // Start with READY-LED ON TO INDICATE NOT READY TO RUN.
-    outb(RDYLEDON, LG_IO_CNTRL2);
     printk("AV-LV2:  lv2_dev_init() succeeded\n");
     return(0);
 }
-static int lv2_open(struct inode *inode, struct file *file)
+int lv2_open(struct inode *inode, struct file *file)
 {
   return 0;
 }
@@ -782,7 +764,7 @@ int lv2_release(struct inode *_inode, struct file *f)
   return 0;
 }
 
-static const struct file_operations lv2_fops = {
+const struct file_operations lv2_fops = {
   .owner	    = THIS_MODULE,
   .llseek           = no_llseek,
   .read             =  lv2_read,        /* lg_read */
@@ -790,133 +772,6 @@ static const struct file_operations lv2_fops = {
   .open             = lv2_open,        /* lg_open */
   .release          = lv2_release,     /* lg_release */
 };
-struct miscdevice lv2_device = {
-  .minor = MISC_DYNAMIC_MINOR,
-  .name = DEV_NAME_LV2,
-  .fops = &lv2_fops,
-};
-
-static int lv2_dev_probe(struct platform_device *plat_dev)
-{
-    struct lv2_dev *lv2_dev;
-    int            rc;
-
-    // allocate mem for struct device will work with
-    lv2_dev = kzalloc(sizeof(struct lv2_dev), GFP_KERNEL);
-    if (!lv2_dev)
-      {
-	pr_err("kzalloc() failed for laser device struct\n");
-	return(-ENOMEM);
-      }
-
-    memset((char *)lv2_dev,0,sizeof(struct lv2_dev));
-    platform_set_drvdata(plat_dev, lv2_dev);
-    lv2_dev->dev = &plat_dev->dev;
-
-    // We don't use kref or mutex locks yet.
-    kref_init(&lv2_dev->ref);
-    mutex_init(&lv2_dev->lg_mutex);
-
-    dev_set_drvdata(lv2_dev->dev, lv2_dev);
-    spin_lock_init(&lv2_dev->lock);
-    INIT_LIST_HEAD(&lv2_dev->free);
-    INIT_LIST_HEAD(&lv2_dev->used);
-    init_waitqueue_head(&lv2_dev->wait);
-
-    // Setup misc device
-    lv2_dev->miscdev.minor = lv2_device.minor;
-    lv2_dev->miscdev.name = DEV_NAME_LV2;
-    lv2_dev->miscdev.fops = lv2_device.fops;
-    rc = misc_register(&lv2_dev->miscdev);
-    if (rc)
-      {
-	printk(KERN_ERR "AV-LV2:  Failed to register Laser misc_device, err %d \n", rc);
-	kfree(lv2_dev);
-	return(rc);
-      }
-
-    printk(KERN_INFO "\nAV-LV2:laser misc-device created\n");
-
-#if 0
-    // Obtain IO space for device
-    if (!request_region(LG_BASE, LASER_REGION, DEV_NAME_LV2))
-      {
-	kfree(lv2_dev);
-	misc_deregister(&lv2_dev->miscdev);
-	printk(KERN_CRIT "\nAV-LV2:  Unable to get IO regs");
-	return(-EBUSY);
-      }
-#endif
-    
-    rc = lv2_dev_init(lv2_dev);
-    if (rc)
-      {
-	printk(KERN_ERR "AV-LV2:  Failed to initialize Laser device, err %d \n", rc);
-	kfree(lv2_dev);
-	return(rc);
-      }
-      
-    // All initialization done, so enable timer
-    printk(KERN_INFO "\nAV-LV2: LV2 Device installed and initialized.\n");
-    return(0);
-}
-static int lv2_pdev_remove(struct platform_device *pdev)
-{
-  struct lv2_dev *lv2_dev = platform_get_drvdata(pdev);
-  struct device *this_device;
-  
-  if (!lv2_dev)
-    return(-EBADF);
-
-  kfree(lv2_dev->pSenseBuff);
-  this_device = lv2_dev->miscdev.this_device;
-  release_region(LG_BASE, LASER_REGION);
-  misc_deregister(&lv2_dev->miscdev);
-  kfree(lv2_dev);
-  return(0);
-}
-
-static struct platform_device lv2_dev = {
-  .name   = DEV_NAME_LV2,
-  .id     = 0,
-  .num_resources = 0,
-};
-static struct platform_driver lv2_platform_driver = {
-  .probe   = lv2_dev_probe,
-  .remove  = lv2_pdev_remove,
-  .driver  = {
-    .name  = DEV_NAME_LV2,
-  },
-};
-static int __init lv2_init(void)
-{
-  int rc;
-
-  rc = platform_driver_register(&lv2_platform_driver);
-  if (rc)
-    {
-      printk(KERN_ERR "AV-LV2:  Unable to register platform driver lv2, ret %d\n", rc);
-      return(rc);
-    }
-  rc = platform_device_register(&lv2_dev);
-  if (rc)
-    {
-      printk(KERN_ERR "AV-LV2:  Unable to register platform device lv2, ret %d\n", rc);
-      return(rc);
-    }
-  printk(KERN_INFO "\nAV-LV2:LaserVision2 platform device driver installed.\n");
-  return(rc);
-}
-
-static void __exit lv2_exit(void)
-{
-  platform_device_unregister(&lv2_dev);
-  platform_driver_unregister(&lv2_platform_driver);
-  return;
-}
-module_init(lv2_init);
-module_exit(lv2_exit);
-
 MODULE_AUTHOR("Patricia A. Holden for Aligned Vision");
 MODULE_DESCRIPTION("Driver for Laser Vision 2");
 MODULE_LICENSE("GPL");
