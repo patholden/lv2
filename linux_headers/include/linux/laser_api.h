@@ -217,6 +217,7 @@ struct lv2_sense_info {
   int16_t   yData;             // Needs to be signed for LTC1597 bipolar data conversion to +/-Volts
   uint8_t   point_delay;       // usec delay between sense operations
   uint8_t   sense_delay;       // usec delay between write-to-dac & read-from-sense-io
+  uint8_t   pad[2];            // pad for union size match
 };
 struct lv2_ss_sense_info {
   uint32_t   numPoints;        // Number of write/sense operations to perform
@@ -280,8 +281,9 @@ struct cmd_rw_base {
     struct lg_val64 dat64;
     struct lg_xydata xydata;
     struct lg_xydelta xydelta;
-    struct lv2_sense_info senseData;
     struct lv2_xypoints   xyPoints;
+    struct lv2_sense_info senseData;
+    struct lv2_ss_sense_info ss_senseData;
   }cmd_data;
 };
 struct cmd_rw_movedata {

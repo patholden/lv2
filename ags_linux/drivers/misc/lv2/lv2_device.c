@@ -224,7 +224,7 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
 
     if (priv == NULL)
       {
-	printk("AV-CS-BOX:   Bad pointer to private data");
+	printk("AV-CS-BOX:   Bad pointer to private data\n");
 	return;
       }
     pSenseData = (struct write_sense_cs_data *)priv->pSenseBuff;
@@ -601,11 +601,19 @@ static void lv2_move_xydata_lite(struct lv2_xypoints *xyData)
 }      
 static int lv2_proc_cmd(struct cmd_rw *p_cmd_data, struct lv2_info *priv)
 {
+    uint8_t       beam_setting;
+
     if (!priv)
       return(-ENODEV);
 
     switch(p_cmd_data->base.hdr.cmd)
       {
+      case CMDW_STOP:
+	printk("AV-LV2:  Got STOP/IDLE command\n");
+	beam_setting = inb(LG_IO_CNTRL2);  // Turn off beam
+	beam_setting &= LASERDISABLE;      // Dark move, disable laser.
+	outb(beam_setting, LG_IO_CNTRL2);
+	break;
       case CMDW_LV2_SENSE_XPOINT:
 	lv2_sense_one_xpoint(priv, (struct lv2_sense_one_info *)&p_cmd_data->base.cmd_data.senseData);
 	break;
@@ -631,7 +639,7 @@ static int lv2_proc_cmd(struct cmd_rw *p_cmd_data, struct lv2_info *priv)
 	return(lv2_super_scan(priv, (struct lv2_ss_sense_info *)&p_cmd_data->base.cmd_data.ss_senseData));
 	break;
       default:
-	printk(KERN_ERR "\nAV-LV2:  CMDW %d option not found", p_cmd_data->base.hdr.cmd);
+	printk(KERN_ERR "AV-LV2:  CMDW %d option not found\n", p_cmd_data->base.hdr.cmd);
 	break;
       }
     return(0);
@@ -663,13 +671,13 @@ ssize_t lv2_read(struct file *file, char __user *buffer, size_t count, loff_t *f
     if ((count<=0) || (count > priv->sense_buff_size))
       {
  	spin_unlock(&priv->lock);
-	printk(KERN_ERR "\nAV-LV2: READ bad count=%d to sensor buffer", (int)count);
+	printk(KERN_ERR "AV-LV2: READ bad count=%d to sensor buffer\n", (int)count);
 	return(-EINVAL);
       }
     if (!priv->pSenseBuff)
       {
  	spin_unlock(&priv->lock);
-	printk(KERN_ERR "\nAV-LV2: READ bad pointer to sensor buffer");
+	printk(KERN_ERR "AV-LV2: READ bad pointer to sensor buffer\n");
 	return(-EBADF);
       }
     /* sensor scan has been done */
@@ -718,7 +726,7 @@ ssize_t lv2_write(struct file *file, const char __user *buffer, size_t count, lo
     // Validate command type
     if (!pHdr->cmd || (pHdr->cmd > CMD_LAST))
       {
-	printk(KERN_ERR "\nAV-LV2: lg_write unknown command %d", pHdr->cmd);
+	printk(KERN_ERR "AV-LV2: lg_write unknown command %d\n", pHdr->cmd);
 	kfree(cmd_data);
 	return(-EINVAL);
       }

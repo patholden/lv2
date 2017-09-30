@@ -95,87 +95,43 @@ compile.h:
 clean:
 	rm -f *.o agsd compile.h *~
 usb_install:
-	cp $(AGSCFGDIR)/S95agsd $(BUILDROOTTGTDIR)/etc/init.d
-	chmod 777 $(AGSCFGDIR)/S50sshd
-	cp $(AGSCFGDIR)/S50sshd $(BUILDROOTTGTDIR)/etc/init.d
-	cp $(AGSCFGDIR)/sshd_config $(BUILDROOTTGTDIR)/etc/ssh
-	cp $(AGSCFGDIR)/usb_fstab $(BUILDROOTTGTDIR)/etc/fstab
-	cp $(AGSCFGDIR)/gdbinit $(BUILDROOTFSDIR)/.gdbinit
+	cp agsd $(BUILDROOTFSDIR)/laser/sbin
+	cp $(AGSCFGDIR)/autofocus.txt $(BUILDROOTFSDIR)/laser/data/autofocus
+	cp $(AGSCFGDIR)/visionfocus.txt $(BUILDROOTFSDIR)/laser/data/focusvision
+	cp $(AGSCFGDIR)/visionparameters.txt $(BUILDROOTFSDIR)/laser/data/vision
+	cp $(AGSCFGDIR)/calibration.txt $(BUILDROOTFSDIR)/laser/data/calib
+	cp $(AGSCFGDIR)/information.txt $(BUILDROOTFSDIR)/laser/data/info
+	cp $(AGSCFGDIR)/initialization.txt $(BUILDROOTFSDIR)/laser/data/init
+	unix2dos $(BUILDROOTFSDIR)/laser/data/autofocus
+	unix2dos $(BUILDROOTFSDIR)/laser/data/focusvision
+	unix2dos $(BUILDROOTFSDIR)/laser/data/vision
+	unix2dos $(BUILDROOTFSDIR)/laser/data/calib
+	unix2dos $(BUILDROOTFSDIR)/laser/data/info
+	unix2dos $(BUILDROOTFSDIR)/laser/data/init
+	touch $(BUILDROOTFSDIR)/laser/data/hobbs
+	chmod +w $(BUILDROOTFSDIR)/laser/data/*
+	cp $(AGSCFGDIR)/S95agsd.USBSTICK $(BUILDROOTFSDIR)/etc/init.d/S95agsd
+	chmod 777 $(BUILDROOTFSDIR)/etc/init.d/S95agsd
+	cp $(AGSCFGDIR)/usb_fstab $(BUILDROOTFSDIR)/etc/fstab
 	cp $(AGSCFGDIR)/skeleton.mk $(BUILDROOTDIR)/package/skeleton/
-	cp $(AGSCFGDIR)/ags-busybox-config $(BUILDROOTDIR)/package/busybox
-	cp $(AGSCFGDIR)/ags-buildroot-config $(BUILDROOTDIR)/.config
-mmc_install:
-	cp $(AGSCFGDIR)/autofocus.txt $(BUILDROOTFSDIR)/lv/data/autofocus
-	dos2unix $(BUILDROOTFSDIR)/lv/data/autofocus
-	cp $(AGSCFGDIR)/visionfocus.txt $(BUILDROOTFSDIR)/lv/data/focusvision
-	dos2unix $(BUILDROOTFSDIR)/lv/data/focusvision
-	cp $(AGSCFGDIR)/visionparameters.txt $(BUILDROOTFSDIR)/lv/data/vision
-	dos2unix $(BUILDROOTFSDIR)/lv/data/vision
-	cp $(AGSCFGDIR)/calibration.txt $(BUILDROOTFSDIR)/lv/data/calib
-	dos2unix $(BUILDROOTFSDIR)/lv/data/calib
-	cp $(AGSCFGDIR)/version.txt $(BUILDROOTFSDIR)/lv/data/version
-	dos2unix $(BUILDROOTFSDIR)/lv/data/version
-	cp $(AGSCFGDIR)/information.txt $(BUILDROOTFSDIR)/lv/data/info
-	dos2unix $(BUILDROOTFSDIR)/lv/data/info
-	cp $(AGSCFGDIR)/initialization.txt $(BUILDROOTFSDIR)/lv/data/init
-	dos2unix $(BUILDROOTFSDIR)/lv/data/init
-	cp $(AGSCFGDIR)/polarizer.txt $(BUILDROOTFSDIR)/lv/data/polarizer
-	dos2unix $(BUILDROOTFSDIR)/lv/data/polarizer
-	touch $(BUILDROOTFSDIR)/lv/data/hobbs
-	chmod +w $(BUILDROOTFSDIR)/lv/data/*
-	chmod 777 agsd
-	cp agsd $(BUILDROOTFSDIR)/lv/sbin
-	chmod 777 $(AGSCFGDIR)/S95agsd
-	cp $(AGSCFGDIR)/S95agsd $(BUILDROOTTGTDIR)/etc/init.d
-	chmod 777 $(AGSCFGDIR)/S50sshd
-	cp $(AGSCFGDIR)/S50sshd $(BUILDROOTTGTDIR)/etc/init.d
-	cp $(AGSCFGDIR)/sshd_config $(BUILDROOTTGTDIR)/etc/ssh
-	cp $(AGSCFGDIR)/mmc_fstab $(BUILDROOTTGTDIR)/etc/fstab
-	cp $(AGSCFGDIR)/gdbinit $(BUILDROOTFSDIR)/.gdbinit
-	cp $(AGSCFGDIR)/skeleton.mk $(BUILDROOTDIR)/package/skeleton/
-	cp $(AGSCFGDIR)/ags-busybox-config $(BUILDROOTDIR)/package/busybox
-	cp $(AGSCFGDIR)/ags-buildroot-config $(BUILDROOTDIR)/.config
+	cp agsd $(BUILDROOTFSDIR)/usr/sbin
+	sudo chmod 777 $(BUILDROOTFSDIR)/usr/sbin/agsd
+# NOTE:  After running "make usb_install", need to re-run buildroot "make".
+#        This will rebuild the output/images/rootfs.ext2 file-system package
+#        used to burn to Projector USB stick.
 burnusb:
 	if [ ! -d /mnt/stick/lost+found ] ; then sudo mount /dev/sdb1 /mnt/stick ; fi
-	if [ ! -d /mnt/stick/data ] ; then sudo mkdir /mnt/stick/data ; fi
-	if [ ! -d /mnt/stick/sbin ] ; then sudo mkdir /mnt/stick/sbin ; fi
-	sudo cp $(AGSCFGDIR)/autofocus.txt /mnt/stick/data/autofocus
-	sudo unix2dos /mnt/stick/data/autofocus
-	sudo cp $(AGSCFGDIR)/visionfocus.txt /mnt/stick/data/focusvision
-	sudo unix2dos /mnt/stick/data/focusvision
-	sudo cp $(AGSCFGDIR)/visionparameters.txt /mnt/stick/data/vision
-	sudo unix2dos /mnt/stick/data/vision
-	sudo cp $(AGSCFGDIR)/calibration.txt /mnt/stick/data/calib
-	sudo unix2dos /mnt/stick/data/calib
-	sudo cp $(AGSCFGDIR)/version.txt /mnt/stick/data/version
-	sudo unix2dos /mnt/stick/data/version
-	sudo cp $(AGSCFGDIR)/information.txt /mnt/stick/data/info
-	sudo unix2dos /mnt/stick/data/info
-	sudo cp $(AGSCFGDIR)/initialization.txt /mnt/stick/data/init
-	sudo unix2dos /mnt/stick/data/init
-	sudo cp $(AGSCFGDIR)/polarizer.txt /mnt/stick/data/polarizer
-	sudo unix2dos /mnt/stick/data/polarizer
-	sudo echo "\0" > /tmp/zero
-	sudo cp /tmp/zero /mnt/stick/data/hobbs
-	sudo chmod +w /mnt/stick/data/*
-	sudo chmod 777 agsd
-	sudo cp agsd /mnt/stick/sbin
 	sudo umount /dev/sdb1
 	sudo mount /dev/sdb1 /mnt/stick
 	sudo mount -o loop,ro $(BUILDROOTDIR)/output/images/rootfs.ext2 $(BUILDROOTDIR)/output/ext2
 	sudo cp -avrf $(BUILDROOTDIR)/output/ext2/* /mnt/stick
 	sudo cp $(BUILDROOTDIR)/output/images/bzImage /mnt/stick
 	sudo cp $(AGSCFGDIR)/extlinux.conf /mnt/stick
+	sudo echo "\0" > /tmp/zero
+	sudo cp /tmp/zero /mnt/stick/laser/data/hobbs
 	sudo umount /dev/sdb1
 	sudo umount $(BUILDROOTDIR)/output/ext2
-burnflash:
-	sudo umount /dev/sdb1
-	sudo mount /dev/sdb1 /mnt/stick
-	sudo mount -o loop,ro $(BUILDROOTDIR)/output/images/rootfs.ext2 $(BUILDROOTDIR)/output/ext2
-	sudo cp -avrf $(BUILDROOTDIR)/output/ext2/* /mnt/stick
-	sudo cp $(BUILDROOTDIR)/output/images/bzImage /mnt/stick
-	sudo cp $(AGSCFGDIR)/mmc_extlinux.conf /mnt/stick/extlinux.conf
-	sudo chmod -R 777 /mnt/stick/lv/data
-	sudo chmod -R 777 /mnt/stick/usr/sbin/agsd
-	sudo umount /dev/sdb1
-	sudo umount $(BUILDROOTDIR)/output/ext2
+# FIXME---PNA---ADD REFERENCE TO UPDATE SCRIPT & ANY OTHER STUFF FOR BUILDING & BURNING
+#               TO ONBOARD FLASH
+#mmc_install:
+#burnflash:

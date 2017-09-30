@@ -1,7 +1,7 @@
 BUILDROOTDIR = $(HOME)/buildroot
 STAGING_DIR = $(BUILDROOTDIR)/output/host/usr/x86_64-buildroot-linux-gnu/sysroot
 TOOLDIR = $(BUILDROOTDIR)/output/host/usr/bin/x86_64-buildroot-linux-gnu
-TEST_DIR = $(BUILDROOTDIR)/board/agslaser/rootfs_overlay/lv/sbin
+TEST_DIR = $(BUILDROOTDIR)/board/agslaser/rootfs_overlay/debug/sbin
 INCLUDES = -I ./ -I ../linux_headers/include
 CC=$(TOOLDIR)-gcc
 LD=$(TOOLDIR)-ld
@@ -93,7 +93,7 @@ xycenter.o: xycenter.c
 clean:
 	rm *.o $(TEST_EXEC)
 install:
-	chmod 755 $(TEST_EXEC); cp $(TEST_EXEC) $(TEST_DIR)
+	chmod 777 $(TEST_EXEC); cp $(TEST_EXEC) $(TEST_DIR)
 burnusb:
 	sudo umount /dev/sdb1
 	sudo mount /dev/sdb1 /mnt/stick

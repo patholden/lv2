@@ -1,7 +1,7 @@
 BUILDROOTDIR = ../../buildroot
 STAGING_DIR = $(BUILDROOTDIR)/output/host/usr/x86_64-buildroot-linux-gnu/sysroot
 TOOLDIR = $(BUILDROOTDIR)/output/host/usr/bin/x86_64-buildroot-linux-gnu
-TEST_DIR = $(BUILDROOTDIR)/board/agslaser/rootfs_overlay/lv/sbin
+TEST_DIR = $(BUILDROOTDIR)/board/agslaser/rootfs_overlay/debug/lv/sbin
 INCLUDES = -I ../ -I ../../linux_headers/include -I ../../ags_daemon
 CC=$(TOOLDIR)-gcc
 LD=$(TOOLDIR)-ld
@@ -9,6 +9,7 @@ AS=$(TOOLDIR)-as
 AR=$(TOOLDIR)/x86_64-buildroot-linux-uclibc-ar
 LDFLAGS=-Wl,--sysroot=$(STAGING_DIR) -Wl,--error-poison-system-directories -L$(STAGING_DIR)/lib -L$(STAGING_DIR)/usr/lib -lc -lm
 CFLAGS = -D NEW_TFIND -g -march=atom -Wall -Wmissing-prototypes -Wunused -Werror $(INCLUDES)
+TEST_EXEC = tf_test find_sscoords_test box_test coarse_scan_test dark_scan_test sense_one_test sense_loop_test
 BOX_TEST_OBJS = lv_box_test.o  \
 		../../ags_daemon/Laser_lv2_If.o
 SENSE_ONE_TEST_OBJS = lv_sense_one_test.o  \
@@ -42,21 +43,14 @@ sense_one_test: $(SENSE_ONE_TEST_OBJS) ../../linux_headers/include/linux/laser_a
 	$(CC) $(LDFLAGS) -o $@ $(SENSE_ONE_TEST_OBJS)
 sense_loop_test: $(SENSE_LOOP_TEST_OBJS) ../../linux_headers/include/linux/laser_api.h
 	$(CC) $(LDFLAGS) -o $@ $(SENSE_LOOP_TEST_OBJS)
-all:  tf_test box_test coarse_scan_test sense_one_test sense_loop_test find_sscoords_test dark_scan_test
+all:  $(TEST_EXEC)
 
 %.o: %.c ../../linux_headers/include/linux/laser_api.h
 	$(CC) -c -o $@ $(CFLAGS) -I$(INCLUDES) $<
 clean:
 	rm *.o box_test coarse_scan_test sense_one_test sense_loop_test tf_test find_sscoords_test dark_scan_test
 install:
-	chmod 755 tf_test box_test coarse_scan_test sense_one_test sense_loop_test find_sscoords_test
-	cp tf_test $(TEST_DIR)
-	cp find_sscoords_test $(TEST_DIR)
-	cp box_test $(TEST_DIR)
-	cp coarse_scan_test $(TEST_DIR)
-	cp dark_scan_test $(TEST_DIR)
-	cp sense_one_test $(TEST_DIR)
-	cp sense_loop_test $(TEST_DIR)
+	chmod 777 $(TEST_EXEC);	cp $(TEST_EXEC) $(TEST_DIR)
 burnusb:
 	sudo umount /dev/sdb1
 	sudo mount /dev/sdb1 /mnt/stick

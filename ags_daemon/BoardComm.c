@@ -735,7 +735,15 @@ int doWriteDevCmdNoData(struct lg_master *pLgMaster, uint32_t command)
 }
 int doLGSTOP(struct lg_master *pLgMaster)
 {
-  return(doWriteDevCmdNoData(pLgMaster, CMDW_STOP));
+  int    rc=0;
+  uint32_t    command=CMDW_STOP;
+  
+  // Send stop to target find device (/dev/lv2)
+  rc = write(pLgMaster->fd_lv2, (char *)&command, sizeof(command));
+  if (rc < 0)
+    syslog(LOG_ERR,"\nCMDW-NODATA: cmd %d, ERROR rc%d, errno %d\n", command, rc, errno);
+  // Send stop to master laser device (/dev/laser)
+  return(doWriteDevCmdNoData(pLgMaster, command));
 }
 int doSTOPCMD(struct lg_master *pLgMaster)
 {

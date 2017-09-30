@@ -177,7 +177,7 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 {
     struct lv2_sense_info   sense_data;
     struct lv2_xypoints     xydata;
-    //    int                     ret;
+    int                     ret;
     uint32_t                box_loop_count;
     int16_t                 currentX=startX;
     int16_t                 currentY=startY;
@@ -210,6 +210,11 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     //    while (box_loop_count < COARSE_SCAN_MAX_LOOPS)
     while (box_loop_count < 10)
       {
+	if (pLgMaster->rcvdStopCmd == 1)
+	  {
+	    syslog(LOG_NOTICE, "BOX_LOOP %d:  Received IDLE command", box_loop_count);
+	    return(0);	    
+	  }
 	if (isOutOfBounds(sense_data.xData, sense_data.step, sense_data.numPoints))
 	  {
 	    syslog(LOG_NOTICE, "BOX_LOOP %d: OUT-OF-BOUNDS step=%d, data=%x, numPoints=%d",
@@ -227,7 +232,7 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 	       box_loop_count, currentX, currentY, sense_data.step, sense_data.numPoints);
 	lv_box_sense_cmd(pLgMaster, (struct lv2_sense_info *)&sense_data);
     
-#if 0
+#if 1
 	ret = CoarseScanFindMatch(pLgMaster, sense_data.numPoints, currentX, currentY, sense_data.step, foundX, foundY);
 	if (ret == 0)
 	  {
@@ -434,6 +439,9 @@ int FindTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     int                  rc;
 
     rc = CoarseScan(pLgMaster, startX, startY, foundX, foundY);
+    if (pLgMaster->rcvdStopCmd == 1)
+      return(0);
+
     // Move mirrors to starting XY in the dark on each loop to avoid ghost/tail
     xyPoints.xPoint = startX; 
     xyPoints.yPoint = startY; 
