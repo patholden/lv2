@@ -179,7 +179,6 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	lv2_sense_point(point, point_axis, &sense_val, pSenseInfo->sense_delay);
 	pSenseData[pt_idx].sense_val = sense_val;
 	pSenseData[pt_idx].point = point;
-	printk("AV-LV2:  LINE_WS_OP sense point=%x; sense_read_data[%d]=%x\n",point, pt_idx, pSenseData[pt_idx].sense_val);
 	pt_idx++;
 	udelay(sense_delay);    // Wait minimum of 20 usec (minimum is set to 25) to process next x or y point.
       }
@@ -235,16 +234,11 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
       }
     memset((uint8_t *)pSenseData, 0, sizeof(struct write_sense_cs_data));
 
-    // Turn laser on or off, depending on laser-setting flag
-    beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
-    if (laser_setting == LV2_LASER_ON)
-      beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
-    else
-      beam_setting &= LASERDISABLE;            // dark move, disable laser
-    outb(beam_setting, LG_IO_CNTRL2);
-    
     // Make sure to take device lock before starting.
     spin_lock(&priv->lock);
+
+    // Get initial val of LG_IO_CNTRL2 register
+    beam_setting = inb(LG_IO_CNTRL2);
 
     // These values are pushed from user & are constant
     new_point.step      = pSenseInfo->step;
@@ -260,10 +254,26 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
     // Sometimes there's a spike when beam is turned on,
     // so do per-point write-sense & debounce sense-buffer-register
     // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
+    if (laser_setting == LV2_LASER_ON)
+      beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;
+    else
+      beam_setting &= LASERDISABLE;            // dark move, disable laser
+    outb(beam_setting, LG_IO_CNTRL2);
     lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
     sense_val = inb(TFPORTRL);
     sense_val = inb(TFPORTRL);
     sense_val = inb(TFPORTRL);
+    pSenseData[new_point.sense_buf_idx].sense_val = sense_val;
+    new_point.sense_buf_idx++;
+    new_point.point += new_point.step;
+    // NOTE:  END OF special-case first point.
+    
+    // Turn laser on or off, depending on laser-setting flag
+    if (laser_setting == LV2_LASER_ON)
+      beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
+    else
+      beam_setting &= LASERDISABLE;            // dark move, disable laser
+    outb(beam_setting, LG_IO_CNTRL2);
     
     // left side, UP (Y-ADD)
     lv2_senseY_add(pSenseData, &new_point);
@@ -411,7 +421,7 @@ int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
     // so do per-point write-sense for first 2 points
     // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
     beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
-    beam_setting |= LASERENABLE | DIMBEAM;   // light move, enable laser.
+    beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;   // light move, enable laser.
     outb(beam_setting, LG_IO_CNTRL2);
     lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
     lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
@@ -484,7 +494,7 @@ int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
     // so do per-point write-sense for first 2 points
     // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
     beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
-    beam_setting |= LASERENABLE | DIMBEAM;   // light move, enable laser.
+    beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;   // light move, enable laser.
     outb(beam_setting, LG_IO_CNTRL2);
     lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
     lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
@@ -609,7 +619,6 @@ static int lv2_proc_cmd(struct cmd_rw *p_cmd_data, struct lv2_info *priv)
     switch(p_cmd_data->base.hdr.cmd)
       {
       case CMDW_STOP:
-	printk("AV-LV2:  Got STOP/IDLE command\n");
 	beam_setting = inb(LG_IO_CNTRL2);  // Turn off beam
 	beam_setting &= LASERDISABLE;      // Dark move, disable laser.
 	outb(beam_setting, LG_IO_CNTRL2);
