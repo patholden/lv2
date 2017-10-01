@@ -25,7 +25,8 @@ USERINCLUDE    := \
 	-I./ \
 	-I$(LNXHDRDIR)/include
 ### CFLAGS = -g -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
-CFLAGS = -D NEW_TFIND -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
+#CFLAGS = -D NEW_TFIND -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
+CFLAGS = -D USE_USBSTICK -D NEW_TFIND -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
 AGS_OBJECTS = Main.o \
 	      L3DTransform.o \
 	      AngleCorrections.o \
@@ -115,7 +116,7 @@ usb_install:
 	cp $(AGSCFGDIR)/usb_fstab $(BUILDROOTFSDIR)/etc/fstab
 	cp $(AGSCFGDIR)/skeleton.mk $(BUILDROOTDIR)/package/skeleton/
 	cp agsd $(BUILDROOTFSDIR)/usr/sbin
-	sudo chmod 777 $(BUILDROOTFSDIR)/usr/sbin/agsd
+	chmod 777 $(BUILDROOTFSDIR)/usr/sbin/agsd
 # NOTE:  After running "make usb_install", need to re-run buildroot "make".
 #        This will rebuild the output/images/rootfs.ext2 file-system package
 #        used to burn to Projector USB stick.

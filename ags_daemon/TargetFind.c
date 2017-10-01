@@ -50,15 +50,15 @@ static int SuperScanFindMatch(struct lg_master *pLgMaster, int16_t startX, int16
  ***************************************************************/
 int isOutOfBounds(int16_t point, uint16_t step, uint32_t count)
 {
-    int16_t   endPoint;
+    int32_t   endPoint;
 
-    endPoint = (point - (step * count)) & kMaxUnsigned;
-    syslog(LOG_NOTICE, "isOutOfBounds():  negative test point = %x", endPoint);
-    if (endPoint <= kMinSigned)
+    endPoint = point - (step * count);
+    syslog(LOG_NOTICE, "isOutOfBounds():  NEG test point=%x,endPoint=%x, numPoints=%d", point, endPoint, step*count);
+    if (endPoint - point >= kMaxSigned)
       return(-1);
-    endPoint = (point + (step * count)) & kMaxUnsigned;
-    syslog(LOG_NOTICE, "isOutOfBounds():  positive test point = %x", endPoint);
-    if (endPoint >= kMaxSigned)
+    endPoint = point + (step * count);
+    syslog(LOG_NOTICE, "isOutOfBounds():  POS test point=%x,endPoint=%x, numPoints=%d", point, endPoint, step*count);
+    if (endPoint - point >= kMaxSigned)
       return(-1);
     return(0);
 }
@@ -93,7 +93,6 @@ static int FindSensedTarget(struct lg_master *pLgMaster, int16_t startX, int16_t
     low_index = 0;
     for (i = 0; i < numPoints; i++)
       {
-	syslog(LOG_NOTICE,"FindSensedTarget: sense data[%d]=%x", i, pSenseFound[i].sense_val);
 	if (pSenseFound[i].sense_val <= sense_threshold)
 	  {
 	    syslog(LOG_NOTICE,"FindSensedTarget: found good sense data[%d]=%x", i, pSenseFound[i].sense_val);
@@ -199,40 +198,49 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     sense_data.xData = currentX;
     sense_data.yData = currentY;
 
-
     // Move mirrors to starting XY in the dark on each loop to avoid ghost/tail
     xydata.xPoint = startX; 
     xydata.yPoint = startY; 
+    lv_setpoints_lite(pLgMaster, (struct lv2_xypoints *)&xydata);
+    usleep(250);
     lv_setpoints_dark(pLgMaster, (struct lv2_xypoints *)&xydata);
     usleep(250);
 
     // loop until out of grid points or target is found
     //    while (box_loop_count < COARSE_SCAN_MAX_LOOPS)
-    while (box_loop_count < 10)
+    while (box_loop_count < COARSE_SCAN_MAX_LOOPS)
       {
 	if (pLgMaster->rcvdStopCmd == 1)
 	  {
 	    syslog(LOG_NOTICE, "BOX_LOOP %d:  Received IDLE command", box_loop_count);
 	    return(0);	    
 	  }
-	if (isOutOfBounds(sense_data.xData, sense_data.step, sense_data.numPoints))
+	// Make sure starting x/y is in center of box
+	currentX = startX - (COARSE_SCAN_STEP * (box_loop_count + 1));
+	currentY = startY - (COARSE_SCAN_STEP * (box_loop_count + 1));
+	sense_data.xData = currentX;
+	sense_data.yData = currentY;
+	syslog(LOG_NOTICE, "BOX_LOOP %d: startXY=%x,%x, current XY= %x,%x, numPoints=%d\n",
+	       box_loop_count, startX, startY,currentX, currentY, sense_data.numPoints);
+	if ((isOutOfBounds(sense_data.xData, sense_data.step, sense_data.numPoints)) < 0)
 	  {
 	    syslog(LOG_NOTICE, "BOX_LOOP %d: OUT-OF-BOUNDS step=%d, data=%x, numPoints=%d",
 		   box_loop_count, sense_data.step, sense_data.xData, sense_data.numPoints);
-	    break;
+	    return(0);
 	  }
-	if (isOutOfBounds(sense_data.yData, sense_data.step, sense_data.numPoints))
+	if ((isOutOfBounds(sense_data.yData, sense_data.step, sense_data.numPoints)) < 0)
 	  {
 	    syslog(LOG_NOTICE, "BOX_LOOP %d: OUT-OF-BOUNDS step=%d, data=%x, numPoints=%d",
 		   box_loop_count, sense_data.step, sense_data.yData, sense_data.numPoints);
-	    break;
+	    return(0);
 	  }
 
 	syslog(LOG_NOTICE, "BOX_LOOP %d: X,Y=%x,%x; step=%d, numPoints=%d",
 	       box_loop_count, currentX, currentY, sense_data.step, sense_data.numPoints);
+	lv_setpoints_lite(pLgMaster, (struct lv2_xypoints *)&xydata);
+	usleep(250);
 	lv_box_sense_cmd(pLgMaster, (struct lv2_sense_info *)&sense_data);
     
-#if 1
 	ret = CoarseScanFindMatch(pLgMaster, sense_data.numPoints, currentX, currentY, sense_data.step, foundX, foundY);
 	if (ret == 0)
 	  {
@@ -240,14 +248,9 @@ int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 		   currentX, currentY, *foundX, *foundY, box_loop_count);
 	    return(0);
 	  }
-#endif
 	// Adjust X & Y back to bottom left corner of box
 	sense_data.numPoints += ((box_loop_count * 2) + 2);
 	box_loop_count++;
-	currentX = startX - (COARSE_SCAN_STEP * (box_loop_count - 1));
-	currentY = startY - (COARSE_SCAN_STEP * (box_loop_count - 1));
-	sense_data.xData = currentX;
-	sense_data.yData = currentY;
       }
 
     syslog(LOG_NOTICE, "CoarseScan() END:  NO target found, numLoops=%d", box_loop_count);
