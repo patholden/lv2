@@ -94,14 +94,3 @@ clean:
 	rm *.o $(TEST_EXEC)
 install:
 	chmod 777 $(TEST_EXEC); cp $(TEST_EXEC) $(TEST_DIR)
-burnusb:
-	sudo umount /dev/sdb1
-	sudo mount /dev/sdb1 /mnt/stick
-	sudo mount -o loop,ro $(BUILDROOTDIR)/output/images/rootfs.ext2 $(BUILDROOTDIR)/output/ext2
-	sudo cp -avrf $(BUILDROOTDIR)/output/ext2/* /mnt/stick
-	sudo cp $(BUILDROOTDIR)/output/images/bzImage /mnt/stick
-	sudo cp $(BUILDROOTDIR)/output/images/bzImage /mnt/stick/boot
-	sudo cp $(HOME)/ags/ags-demo/rev1.0/extlinux.conf /mnt/stick
-	sudo umount /dev/sdb1
-	sudo umount $(BUILDROOTDIR)/output/ext2
-
