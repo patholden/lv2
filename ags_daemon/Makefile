@@ -26,7 +26,7 @@ USERINCLUDE    := \
 	-I$(LNXHDRDIR)/include
 ### CFLAGS = -g -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
 #CFLAGS = -D NEW_TFIND -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
-CFLAGS = -D USE_USBSTICK -D NEW_TFIND -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
+CFLAGS = -D NEW_TFIND -DLASER_DEFINED -march=atom  -Wall -Wmissing-prototypes -Wstrict-prototypes -Wunused -Werror $(USERINCLUDE)
 AGS_OBJECTS = Main.o \
 	      L3DTransform.o \
 	      AngleCorrections.o \
@@ -132,7 +132,7 @@ burnusb:
 	sudo cp /tmp/zero /mnt/stick/laser/data/hobbs
 	sudo umount /dev/sdb1
 	sudo umount $(BUILDROOTDIR)/output/ext2
-# FIXME---PNA---ADD REFERENCE TO UPDATE SCRIPT & ANY OTHER STUFF FOR BUILDING & BURNING
+# FIXME---PMA---ADD REFERENCE TO UPDATE SCRIPT & ANY OTHER STUFF FOR BUILDING & BURNING
 #               TO ONBOARD FLASH
 #mmc_install:
 #burnflash:

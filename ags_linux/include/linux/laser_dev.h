@@ -55,6 +55,17 @@ enum lg_states {
     LGSTATE_TEST
 };
 
+struct lv2_sense_line_data {
+  uint32_t  sense_buf_idx;
+  uint32_t  numPoints;
+  uint16_t  step;
+  int16_t   xPoint;
+  int16_t   yPoint;
+  uint8_t   sense_delay;
+  uint8_t   point_delay;
+  uint8_t   pad[1];
+};
+
 struct lv2_info {
   // dev stuff first
   spinlock_t              lock;

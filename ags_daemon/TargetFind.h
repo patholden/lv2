@@ -10,8 +10,8 @@
 // Specific default values for CoarseScan()
 #define COARSE_SCAN_STEP        10
 #define COARSE_SCAN_NUM_POINTS   5
-#define COARSE_SCAN_MIN_FOUND    5
-#define COARSE_SCAN_MAX_LOOPS   70
+#define COARSE_SCAN_MIN_FOUND    3
+#define COARSE_SCAN_MAX_LOOPS   50
 #define CS_SENSE_THRESHOLD    0x30
 #define CS_SENSE_HITS            3
 
@@ -24,7 +24,7 @@
 #define SS_SENSE_THRESHOLD    0x30
 
 int isOutOfBounds(int16_t point, uint16_t step, uint32_t count);
-int CoarseScanFindMatch(struct lg_master *pLgMaster, uint32_t numPoints, int16_t startX, int16_t startY, uint16_t step, int16_t *foundX, int16_t *foundY);
+int CoarseScanFindMatch(struct lg_master *pLgMaster, struct lv2_sense_info *pSenseData, int16_t *foundX, int16_t *foundY);
 int CoarseScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 	       int16_t *foundX, int16_t *foundY);
 int FindSuperScanCoords(struct lg_master *pLgMaster, int16_t startX, int16_t startY,

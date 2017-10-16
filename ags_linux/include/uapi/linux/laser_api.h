@@ -144,7 +144,7 @@ typedef enum{
 #define MAX_LG_BUFFER    MAX_XYPOINTS * sizeof(struct lg_xydata)  /* maximum size of lg_data[] */
 #define MAX_TF_BUFFER    MAX_XYPOINTS * sizeof(struct write_sense_cs_data)  // maximum number of target-find readings
 #define DO_TEST_DISPLAY  0x1     // USED BY DIAGS.  Will simulate DISPLAY mode
-#define FSSC_THRESHOLD   0xF0    // Indicator for target-not-found when looking
+#define FSSC_THRESHOLD   0xE0    // Indicator for target-not-found when looking
                                  //   for super-scan endpoints
 
 struct hobbs_ctrs {
@@ -160,9 +160,10 @@ struct event_times {
 // FIXME---PAH---NEED TO USE BOTH X & Y POINTS HERE
 struct write_sense_cs_data
 {
-  int16_t   point;
+  int16_t   xPoint;
+  int16_t   yPoint;
   uint8_t   sense_val;
-  uint8_t   pad[3];
+  uint8_t   pad[1];
 };
 struct lg_xydata {
   uint8_t   ctrl_flags;
@@ -193,15 +194,6 @@ struct lv2_xypoints {
   int16_t   xPoint;
   int16_t   yPoint;
   uint32_t  pad;  // Pad out for union conformance
-};
-struct lv2_sense_line_data {
-  uint32_t  sense_buf_idx;
-  uint32_t  numPoints;
-  uint16_t  step;
-  int16_t   point;
-  uint8_t   sense_delay;
-  uint8_t   point_delay;
-  uint8_t   pad[3];
 };
 struct write_sense_fssc_data
 {

@@ -163,15 +163,7 @@ ssize_t LG_SerialWrite2(struct file *file, const char __user *buffer, size_t cou
 
 
 //Start of Local Functions
-//The following 2 are used to init the serial port registers in the FPGA
-static uint8_t LG_SerialRead(int port, int offset)
-{
-	uint8_t value;
-	value = inb(port + offset);
-        return(value);
-}
-
-
+//The following is used to init the serial port registers in the FPGA
 static void LG_SerialWrite(int port, int offset, int value)
 {
         outb(value, port + offset);

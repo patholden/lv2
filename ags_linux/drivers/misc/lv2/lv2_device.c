@@ -39,7 +39,16 @@ enum point_type {
   LV2_XYPOINT,
 };
 
+enum beam_type {
+  LV2_BEAM_DARK=0,
+  LV2_BEAM_DIM,
+  LV2_BEAM_BRIGHT,
+};
+
+static inline void lv2_send_xy_to_dac(struct lv2_xypoints *xyData, uint8_t strobe_on, uint8_t strobe_off, uint8_t beam_on_off);
 static void lv2_move_xydata_dark(struct lv2_xypoints *xyData);
+static void lv2_move_xydata_dim(struct lv2_xypoints *xyData);
+static void lv2_move_xydata_lite(struct lv2_xypoints *xyData);
 
 static inline void lv2_get_xydata_ltcval(int16_t *output_val, int16_t input_val)
 {
@@ -94,7 +103,7 @@ static inline void lv2_send_to_dac(int16_t point, uint8_t strobe_on, uint8_t str
     outb(strobe_off, LG_IO_CNTRL1);
     return;
 }
-static inline void lv2_send_xy_to_dac(struct lv2_xypoints *xyData, uint8_t strobe_on, uint8_t strobe_off, uint8_t point_type, uint8_t beam_on_off)
+static inline void lv2_send_xy_to_dac(struct lv2_xypoints *xyData, uint8_t strobe_on, uint8_t strobe_off, uint8_t beam_on_off)
 {
     int16_t       dac_val;
     int8_t        hi_xpoint;
@@ -104,18 +113,15 @@ static inline void lv2_send_xy_to_dac(struct lv2_xypoints *xyData, uint8_t strob
     uint8_t       beam_setting;
 
     beam_setting = inb(LG_IO_CNTRL2);  // Turn off beam
-    if (beam_on_off)
+    if (beam_on_off == LV2_BEAM_BRIGHT)
       beam_setting |= LASERENABLE | BRIGHTBEAM;  // light move, enable laser.
-    else
+    else if  (beam_on_off == LV2_BEAM_DARK)
       beam_setting &= LASERDISABLE;  // Dark move, disable laser.
-
+    else
+      beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;
+      
     outb(beam_setting, LG_IO_CNTRL2);
     
-    if (point_type == 0)
-      {
-	printk("bad data point type\n");
-	return;
-      }
     // Adjust data for producing correct LTC1597 output voltage to DAC
     // This function also avoids fault condition.
     // Data is applied to DAC input after lo byte is written
@@ -151,24 +157,31 @@ static void lv2_sense_point(int16_t point, uint8_t point_type, uint8_t *sense_va
 
     // Read from target-find register
     // Debounce to get rid of false-positive target finds
-    *sense_val = inb(TFPORTRL);
+    *sense_val = inb(TFPORTRL); 
+    udelay(sense_delay);    // Wait minimum of 20 usec (minimum is set to 25) to process next x or y point.
     return;
 }
 void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct write_sense_cs_data *pSenseData, uint32_t point_axis, uint8_t step_direction)
 {
-    uint32_t                   pt_idx;
     int16_t                    point;
+    int16_t                    target_xPoint;
+    int16_t                    target_yPoint;
     uint16_t                   i;
     uint8_t                    sense_delay;
     uint8_t                    sense_val;
+    uint8_t                    target_sense_val;
 
-    point  = pSenseInfo->point;
-    pt_idx = pSenseInfo->sense_buf_idx;
+    if (point_axis == LV2_XPOINT)
+      point  = pSenseInfo->xPoint;
+    else
+      point = pSenseInfo->yPoint;
+    
     if (pSenseInfo->point_delay < SENSOR_MIN_DELAY)
       sense_delay = SENSOR_MIN_DELAY;
     else
       sense_delay = pSenseInfo->point_delay;
 
+    target_sense_val = 0xFF;
     for (i = 0; i < pSenseInfo->numPoints; i++)
       {
 	if (step_direction == LV2_ADD_STEP)
@@ -176,18 +189,43 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	else if (step_direction == LV2_SUB_STEP)
 	  point -= pSenseInfo->step;
 	  
-	lv2_sense_point(point, point_axis, &sense_val, pSenseInfo->sense_delay);
-	pSenseData[pt_idx].sense_val = sense_val;
-	pSenseData[pt_idx].point = point;
-	pt_idx++;
-	udelay(sense_delay);    // Wait minimum of 20 usec (minimum is set to 25) to process next x or y point.
+	lv2_sense_point(point, point_axis, &sense_val, sense_delay);
+	pSenseData[pSenseInfo->sense_buf_idx].sense_val = sense_val;
+	if (point_axis == LV2_XPOINT)
+	  {
+	    pSenseData[pSenseInfo->sense_buf_idx].xPoint = point;
+	    pSenseData[pSenseInfo->sense_buf_idx].yPoint = pSenseInfo->yPoint;
+	  }
+	else
+	  {
+	    pSenseData[pSenseInfo->sense_buf_idx].yPoint = point;
+	    pSenseData[pSenseInfo->sense_buf_idx].xPoint = pSenseInfo->xPoint;
+	  }
+	pSenseInfo->sense_buf_idx++;
+	// Look for lowest sense-val (indicates closest point to actual target)
+	if (sense_val < target_sense_val)
+	  {
+	    if (point_axis == LV2_XPOINT)
+	      {
+		target_xPoint = point;
+		target_yPoint = pSenseInfo->yPoint;
+	      }
+	    else
+	      {
+		target_xPoint = pSenseInfo->xPoint;
+		target_yPoint = point;
+	      }
+	    target_sense_val = sense_val;
+	  }
       }
+    printk("AV-LV2: DO-LINE-SENSE LOW XY=%d [%x], %d [%x], sense-val=%x\n",
+	   target_xPoint ,target_xPoint, target_yPoint, target_yPoint, target_sense_val); 
     return;
 }
+
 void lv2_senseX_add(struct write_sense_cs_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo)
 {
     // About to write to sensor buffer
-    printk("TVX-ADD: startX=%x, step=%d, count=%d\n", pSenseInfo->point, pSenseInfo->step, pSenseInfo->numPoints);
     do_line_sense_operation(pSenseInfo, pSenseWriteData, LV2_XPOINT, LV2_ADD_STEP);
     return;
 }
@@ -195,14 +233,12 @@ void lv2_senseX_add(struct write_sense_cs_data *pSenseWriteData, struct lv2_sens
 void lv2_senseY_add(struct write_sense_cs_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo)
 {
     // About to write to sensor buffer, so lock now.
-    printk("TVY-ADD: startY=%x, step=%d, count=%d\n", pSenseInfo->point, pSenseInfo->step, pSenseInfo->numPoints);
     do_line_sense_operation(pSenseInfo, pSenseWriteData, LV2_YPOINT, LV2_ADD_STEP);
     return;
 }
 void lv2_senseX_sub(struct write_sense_cs_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo)
 {
     // About to write to sensor buffer
-    printk("TVX-SUB: startX=%x, step=%d, numPoints=%d\n", pSenseInfo->point, pSenseInfo->step, pSenseInfo->numPoints);
     do_line_sense_operation(pSenseInfo, pSenseWriteData, LV2_XPOINT, LV2_SUB_STEP);
     return;
 }
@@ -210,7 +246,6 @@ void lv2_senseX_sub(struct write_sense_cs_data *pSenseWriteData, struct lv2_sens
 void lv2_senseY_sub(struct write_sense_cs_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo)
 {
     // About to write to sensor buffer, so lock now.
-    printk("TVY-SUB: startY=%x, step=%d, numPoints=%d\n", pSenseInfo->point, pSenseInfo->step, pSenseInfo->numPoints);
     do_line_sense_operation(pSenseInfo, pSenseWriteData, LV2_YPOINT, LV2_SUB_STEP);
     return;
 }
@@ -218,9 +253,10 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
 {      
     struct lv2_sense_line_data  new_point;
     struct write_sense_cs_data *pSenseData;
+    uint8_t                     sense_delay;
     uint8_t                     beam_setting;
     uint8_t                     sense_val;
-
+    
     if (priv == NULL)
       {
 	printk("AV-CS-BOX:   Bad pointer to private data\n");
@@ -240,15 +276,19 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
     // Get initial val of LG_IO_CNTRL2 register
     beam_setting = inb(LG_IO_CNTRL2);
 
+    // Set up delay
+    if (pSenseInfo->point_delay < SENSOR_MIN_DELAY)
+      sense_delay = SENSOR_MIN_DELAY;
+    else
+      sense_delay = pSenseInfo->point_delay;
+
     // These values are pushed from user & are constant
     new_point.step      = pSenseInfo->step;
     new_point.numPoints = pSenseInfo->numPoints;
     new_point.point_delay = pSenseInfo->point_delay;
-    new_point.sense_buf_idx = 0;
     new_point.point_delay = SENSOR_MIN_DELAY;
-    
-    // Start with input X,Y
-    new_point.point  = pSenseInfo->yData;
+    new_point.xPoint  = pSenseInfo->xData;
+    new_point.yPoint  = pSenseInfo->yData;
     
     // NOTE:  Leave next lines as-is.
     // Sometimes there's a spike when beam is turned on,
@@ -259,13 +299,10 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
     else
       beam_setting &= LASERDISABLE;            // dark move, disable laser
     outb(beam_setting, LG_IO_CNTRL2);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
+    lv2_sense_point(new_point.yPoint, LV2_YPOINT, &sense_val, sense_delay);
     sense_val = inb(TFPORTRL);
     sense_val = inb(TFPORTRL);
     sense_val = inb(TFPORTRL);
-    pSenseData[new_point.sense_buf_idx].sense_val = sense_val;
-    new_point.sense_buf_idx++;
-    new_point.point += new_point.step;
     // NOTE:  END OF special-case first point.
     
     // Turn laser on or off, depending on laser-setting flag
@@ -276,24 +313,23 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
     outb(beam_setting, LG_IO_CNTRL2);
     
     // left side, UP (Y-ADD)
+    new_point.sense_buf_idx = 0;
     lv2_senseY_add(pSenseData, &new_point);
 
     // left-to-right, across top (X-ADD)
-    new_point.point = pSenseInfo->xData;
-    new_point.sense_buf_idx += new_point.numPoints;
+    new_point.xPoint = pSenseInfo->xData;
     lv2_senseX_add(pSenseData, &new_point);
 
     // Advance Y to top right corner of box
     // Right side, DOWN (Y-SUB)
-    new_point.point = pSenseInfo->yData + (new_point.numPoints * new_point.step);
-    new_point.sense_buf_idx += new_point.numPoints;
+    new_point.yPoint = pSenseInfo->yData + (new_point.numPoints * new_point.step);
     lv2_senseY_sub(pSenseData, &new_point);
 
     // Advance X to top right corner of box
     // right-to-left, across bottom (X-SUB)
-    new_point.point = pSenseInfo->xData + (new_point.numPoints * new_point.step);
-    new_point.sense_buf_idx += new_point.numPoints;
+    new_point.xPoint = pSenseInfo->xData + (new_point.numPoints * new_point.step);
     lv2_senseX_sub(pSenseData, &new_point);
+    return;	
 }
 
 int lv2_coarse_scan_box(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
@@ -311,31 +347,61 @@ int lv2_coarse_scan_box_dark(struct lv2_info *priv, struct lv2_sense_info *pSens
     return(0);
 }
 
-void do_line_fssc_operation(struct lv2_sense_line_data *pSenseInfo, int16_t *endPoint, uint32_t point_axis, uint8_t step_direction)
+void do_line_fssc_operation(struct lv2_sense_line_data *pSenseInfo, int16_t *endPoint, uint32_t point_axis, uint8_t step_direction, int16_t *target_point, uint8_t *target_sense_val)
 {
-    uint32_t                   pt_idx;
     uint16_t                   numPoints;
     int16_t                    point;
     uint16_t                   i;
     uint8_t                    sense_delay;
     uint8_t                    sense_val;
+    uint8_t                    beam_setting;
 
-    point  = pSenseInfo->point;
-    pt_idx = pSenseInfo->sense_buf_idx;
+    if (point_axis == LV2_XPOINT)
+      point  = pSenseInfo->xPoint;
+    else
+      point  = pSenseInfo->yPoint;
+
+    // Set up delay
     if (pSenseInfo->point_delay < SENSOR_MIN_DELAY)
       sense_delay = SENSOR_MIN_DELAY;
     else
       sense_delay = pSenseInfo->point_delay;
 
-    numPoints = LTC1597_BIPOLAR_MAX - point;
+    // Do the first-point 3 times to avoid false readings while LASER comes up
+    // Set beam to LASER ENABLED & ON, DIM SETTING
+    beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
+    beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;   // light move, enable laser.
+    outb(beam_setting, LG_IO_CNTRL2);
+    
+    lv2_sense_point(point, point_axis, &sense_val, sense_delay);
+    lv2_sense_point(point, point_axis, &sense_val, sense_delay);
+    lv2_sense_point(point, point_axis, &sense_val, sense_delay);
+    beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
+    outb(beam_setting, LG_IO_CNTRL2);
+
+    if (pSenseInfo->point_delay < SENSOR_MIN_DELAY)
+      sense_delay = SENSOR_MIN_DELAY;
+    else
+      sense_delay = pSenseInfo->point_delay;
+
+    numPoints = 500;
+    *target_sense_val = 0xFF;
     for (i = 0; i < numPoints; i++)
       {
 	if (step_direction == LV2_ADD_STEP)
 	  point++;
 	else if (step_direction == LV2_SUB_STEP)
 	  point--;
-	  
-	lv2_sense_point(point, point_axis, &sense_val, pSenseInfo->sense_delay);
+
+	lv2_sense_point(point, point_axis, &sense_val, sense_delay);
+	printk("FSSC-DO-LINE: point=%d,sense_val=%x\n", point, sense_val);
+	// Look for lowest sense-val (indicates closest point to actual target)
+	if (sense_val < *target_sense_val)
+	  {
+	    *target_point = point;
+	    *target_sense_val = sense_val;
+	  }
+	
 	if (sense_val > FSSC_THRESHOLD)
 	  {
 	     *endPoint = point;
@@ -347,43 +413,47 @@ void do_line_fssc_operation(struct lv2_sense_line_data *pSenseInfo, int16_t *end
     return;
 }
 
-void lv2_FindYEndpoint_add(struct write_sense_fssc_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo)
+void lv2_FindYEndpoint_add(struct write_sense_fssc_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo, int16_t *target_point, int8_t *target_sense_val)
 {
     int16_t        endPoint;
     
-    printk("FSSC-Y-ADD: startY=%x\n", pSenseInfo->point);
-    do_line_fssc_operation(pSenseInfo, (int16_t *)&endPoint, LV2_YPOINT, LV2_ADD_STEP);
+    printk("FSSC-Y-ADD: startXY=%d,%d\n", pSenseInfo->xPoint,pSenseInfo->yPoint);
+    do_line_fssc_operation(pSenseInfo, (int16_t *)&endPoint, LV2_YPOINT, LV2_ADD_STEP, target_point, target_sense_val);
+    pSenseWriteData->LeftEndpoints.xPoint = pSenseInfo->xPoint;
     pSenseWriteData->TopEndpoints.yPoint = endPoint;
     return;
 }
 
-void lv2_FindYEndpoint_sub(struct write_sense_fssc_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo)
+void lv2_FindYEndpoint_sub(struct write_sense_fssc_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo, int16_t *target_point, int8_t *target_sense_val)
 {
     int16_t        endPoint;
     
-    printk("FSSC-Y-SUB: startY=%x\n", pSenseInfo->point);
-    do_line_fssc_operation(pSenseInfo, (int16_t *)&endPoint, LV2_YPOINT, LV2_SUB_STEP);
+    printk("FSSC-Y-SUB: startXY=%d,%d\n", pSenseInfo->xPoint,pSenseInfo->yPoint);
+    do_line_fssc_operation(pSenseInfo, (int16_t *)&endPoint, LV2_YPOINT, LV2_SUB_STEP, target_point, target_sense_val);
+    pSenseWriteData->LeftEndpoints.xPoint = pSenseInfo->xPoint;
     pSenseWriteData->BottomEndpoints.yPoint = endPoint;
     return;
 }
 
-void lv2_FindXEndpoint_add(struct write_sense_fssc_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo)
+void lv2_FindXEndpoint_add(struct write_sense_fssc_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo, int16_t *target_point, int8_t *target_sense_val)
 {
     int16_t        endPoint;
     
-    printk("FSSC-X-ADD: startX=%x\n", pSenseInfo->point);
-    do_line_fssc_operation(pSenseInfo, (int16_t *)&endPoint, LV2_XPOINT, LV2_ADD_STEP);
+    printk("FSSC-X-ADD: startXY=%d,%d\n", pSenseInfo->xPoint,pSenseInfo->yPoint);
+    do_line_fssc_operation(pSenseInfo, (int16_t *)&endPoint, LV2_XPOINT, LV2_ADD_STEP, target_point, target_sense_val);
     pSenseWriteData->RightEndpoints.xPoint = endPoint;
+    pSenseWriteData->LeftEndpoints.yPoint = pSenseInfo->yPoint;
     return;
 }
 
-void lv2_FindXEndpoint_sub(struct write_sense_fssc_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo)
+void lv2_FindXEndpoint_sub(struct write_sense_fssc_data *pSenseWriteData, struct lv2_sense_line_data *pSenseInfo, int16_t *target_point, int8_t *target_sense_val)
 {
     int16_t        endPoint;
     
-    printk("FSSC-X-SUB: startX=%x\n", pSenseInfo->point);
-    do_line_fssc_operation(pSenseInfo, (int16_t *)&endPoint, LV2_XPOINT, LV2_SUB_STEP);
+    printk("FSSC-X-SUB: startXY=%d,%d\n", pSenseInfo->xPoint,pSenseInfo->yPoint);
+    do_line_fssc_operation(pSenseInfo, (int16_t *)&endPoint, LV2_XPOINT, LV2_SUB_STEP, target_point, target_sense_val);
     pSenseWriteData->LeftEndpoints.xPoint = endPoint;
+    pSenseWriteData->LeftEndpoints.yPoint = pSenseInfo->yPoint;
     return;
 }
 
@@ -392,8 +462,10 @@ int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
     struct write_sense_fssc_data   *pSenseData;
     struct lv2_sense_line_data     new_point;
     struct lv2_xypoints            xyData;
-    uint8_t                        sense_val;
-    uint8_t                        beam_setting;
+    int16_t                        target_point1;
+    int16_t                        target_point2;
+    uint8_t                        target_sense_val1;
+    uint8_t                        target_sense_val2;
     
     pSenseData = (struct write_sense_fssc_data *)priv->pSenseBuff;
     if (pSenseData == NULL)
@@ -413,47 +485,81 @@ int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
     new_point.sense_buf_idx = 0;
     new_point.point_delay = SENSOR_MIN_DELAY;
     
+    // Move beam to x, y spot
+    xyData.xPoint = pSenseInfo->xData;
+    xyData.yPoint = pSenseInfo->yData;
+    lv2_move_xydata_dark((struct lv2_xypoints *)&xyData);
+
     // Start with input X,Y
-    new_point.point  = pSenseInfo->yData;
+    new_point.xPoint  = pSenseInfo->xData;
+    new_point.yPoint  = pSenseInfo->yData;
+    printk("FSSC-START:  XY=%d,%d\n",new_point.xPoint, new_point.yPoint);
     
     // NOTE:  Leave next lines as-is.
     // Sometimes there's a spike when beam is turned on,
     // so do per-point write-sense for first 2 points
     // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
-    beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
-    beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;   // light move, enable laser.
-    outb(beam_setting, LG_IO_CNTRL2);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
-
-    // Turn on beam, bright intensity
-    beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
-    beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
-    outb(beam_setting, LG_IO_CNTRL2);
 
     // Go UP (Y-ADD), search for top endpoint
-    lv2_FindYEndpoint_add(pSenseData, &new_point);
+    printk("FSSC-YADD: XY=%d,%d\n", new_point.xPoint, new_point.yPoint);
+    lv2_FindYEndpoint_add(pSenseData, &new_point, &target_point2, &target_sense_val2);
+    printk("FSSC-YADD: Closest yPoint=%d, sense-val=%d\n", target_point2, target_sense_val2);
     pSenseData->TopEndpoints.xPoint = pSenseInfo->xData;
     
+    // Move back to original XY
+    printk("FSSC-MOVING BACK TO ORIGINAL XY: X=%d, Y=%d\n", xyData.xPoint, xyData.yPoint);
+    lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
+
+    // Set start XY for line-sense operation, sense first point 3 times
+    new_point.xPoint = xyData.xPoint;
+    new_point.yPoint = xyData.yPoint;
+
     // Go Down (Y-SUB), search for bottom endpoint
-    new_point.point  = pSenseInfo->yData;
-    lv2_FindYEndpoint_sub(pSenseData, &new_point);
+    printk("FSSC-YSUB: XY=%d,%d\n", new_point.xPoint, new_point.yPoint);
+    lv2_FindYEndpoint_sub(pSenseData, &new_point, &target_point1, &target_sense_val1);
+    printk("FSSC-YSUB: Closest yPoint=%d, sense-val=%x\n", target_point1, target_sense_val1);
     pSenseData->BottomEndpoints.xPoint = pSenseInfo->xData;
 
+    // Move to point closest to target to start search left & right
     xyData.xPoint  = pSenseInfo->xData;
-    xyData.yPoint = (pSenseData->TopEndpoints.yPoint + pSenseData->BottomEndpoints.yPoint) / 2;
-    lv2_move_xydata_dark((struct lv2_xypoints *)&xyData);
+    if (target_sense_val1 > target_sense_val2)
+      xyData.yPoint = target_point2;
+    else
+      xyData.yPoint = target_point1;
+      
+    printk("FSSC-MOVING TO POINT CLOSEST TO TARGET: X=%d, Y=%d\n", xyData.xPoint, xyData.yPoint);
+    lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
+    
+    new_point.xPoint = xyData.xPoint;
+    new_point.yPoint = xyData.yPoint; 
 
-    // Go right (X-ADD), search for right-side endpoint
-    new_point.point  = pSenseInfo->xData;
-    lv2_FindXEndpoint_add(pSenseData, &new_point);
+    // Set XY to new start-point, Go right (X-ADD), search for right-side endpoint
+    printk("FSSC-XADD: XY=%d,%d\n", new_point.xPoint, new_point.yPoint);
+    lv2_FindXEndpoint_add(pSenseData, &new_point, &target_point1, &target_sense_val1);
+    printk("FSSC-XADD: Closest xPoint=%d, sense-val=%x\n", target_point1, target_sense_val1);
     pSenseData->RightEndpoints.yPoint = xyData.yPoint;
     
+    // Move back to mid-point to start search left & right
+    printk("FSSC-MOVING back to point: X=%d, Y=%d\n", xyData.xPoint, xyData.yPoint);
+    lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
+
+    new_point.xPoint = xyData.xPoint;
+    new_point.yPoint = xyData.yPoint;
+
     // Go left (X-SUB), search for bottom endpoint
-    new_point.point  = pSenseInfo->xData;
-    lv2_FindXEndpoint_sub(pSenseData, &new_point);
+    printk("FSSC-XSUB: XY=%d,%d\n", new_point.xPoint, new_point.yPoint);
+    lv2_FindXEndpoint_sub(pSenseData, &new_point, &target_point2, &target_sense_val2);
+    printk("FSSC-XADD: Closest xPoint=%d, sense-val=%x\n", target_point2, target_sense_val2);
     pSenseData->LeftEndpoints.yPoint = xyData.yPoint;
+    printk("FFSC: LeftXY=%d,%d; RightXY=%d,%d; TopXY=%d,%d; BottomXY=%d,%d\n",
+	   pSenseData->LeftEndpoints.xPoint,
+	   pSenseData->LeftEndpoints.yPoint,
+	   pSenseData->RightEndpoints.xPoint,
+	   pSenseData->RightEndpoints.yPoint,
+	   pSenseData->TopEndpoints.xPoint,
+	   pSenseData->TopEndpoints.yPoint,
+	   pSenseData->BottomEndpoints.xPoint,
+	   pSenseData->BottomEndpoints.yPoint);
     return(0);
 }
 
@@ -463,6 +569,7 @@ int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
     struct lv2_sense_line_data     new_point;
     struct lv2_xypoints            xyData;
     uint32_t                       i;
+    uint8_t                        sense_delay;
     uint8_t                        sense_val;
     uint8_t                        beam_setting;
     
@@ -479,6 +586,12 @@ int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
     // Clean slate with read sense buffer
     memset((uint8_t *)pSenseData, 0, pSenseInfo->numPoints * pSenseInfo->numLines * sizeof(struct write_sense_fssc_data));
         
+    // Set up delay
+    if (pSenseInfo->point_delay < SENSOR_MIN_DELAY)
+      sense_delay = SENSOR_MIN_DELAY;
+    else
+      sense_delay = pSenseInfo->point_delay;
+
     // These values are pushed from user & are constant
     new_point.step        = pSenseInfo->step;
     new_point.numPoints   = pSenseInfo->numPoints;
@@ -487,7 +600,8 @@ int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
     new_point.point_delay = SENSOR_MIN_DELAY;
     
     // Start with input X,Y
-    new_point.point  = pSenseInfo->yData;
+    new_point.xPoint  = pSenseInfo->xData;
+    new_point.yPoint  = pSenseInfo->yData;
     
     // NOTE:  Leave next lines as-is.
     // Sometimes there's a spike when beam is turned on,
@@ -496,9 +610,9 @@ int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
     beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
     beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;   // light move, enable laser.
     outb(beam_setting, LG_IO_CNTRL2);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
-    lv2_sense_point(new_point.point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
+    lv2_sense_point(new_point.yPoint, LV2_YPOINT, &sense_val, sense_delay);
+    lv2_sense_point(new_point.yPoint, LV2_YPOINT, &sense_val, sense_delay);
+    lv2_sense_point(new_point.yPoint, LV2_YPOINT, &sense_val, sense_delay);
 
     // Turn on beam, bright intensity
     beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
@@ -507,27 +621,23 @@ int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
 
     for (i = 0; i < pSenseInfo->numLines; i++)
       {
-	// Go right (X-ADD)
-	// Move xy in dark to position
 	xyData.xPoint = pSenseInfo->xData;
 	xyData.yPoint = pSenseInfo->yData + (i * pSenseInfo->numLines);
+
+	// Go right (X-ADD), move xy in dark to position
 	lv2_move_xydata_dark((struct lv2_xypoints *)&xyData);
 
-	// Sense left across line
-	new_point.point  = pSenseInfo->xData;
+	// Sense across line (X-ADD, ->)
 	lv2_senseX_add(pSenseData, &new_point);
-	new_point.sense_buf_idx += pSenseInfo->numPoints;
 	
-	// Go left (X-SUB)
-	// Move xy in dark to position
+	// Go left (X-SUB, <-)
 	xyData.xPoint = pSenseInfo->xData + (new_point.numPoints * new_point.step);
 	xyData.yPoint = pSenseInfo->yData + (i * pSenseInfo->numLines);
-	lv2_move_xydata_dark((struct lv2_xypoints *)&xyData);
+	// Move xy in dark to position
+	lv2_move_xydata_dim((struct lv2_xypoints *)&xyData);
 
 	// Sense right across line
-	new_point.point = pSenseInfo->xData + (new_point.numPoints * new_point.step);
 	lv2_senseX_sub(pSenseData, &new_point);
-	new_point.sense_buf_idx += pSenseInfo->numPoints;
       }
     return(0);
 }
@@ -543,10 +653,10 @@ void lv2_sense_one_ypoint(struct lv2_info *priv, struct lv2_sense_one_info *pSen
     
     // About to write to sensor buffer, so lock now.
     point = pSenseInfo->data;
-    lv2_sense_point(point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
+    lv2_sense_point(point, LV2_YPOINT, &sense_val, SENSOR_MIN_DELAY);
     pSenseData[pSenseInfo->index].sense_val = sense_val;
-    pSenseData[pSenseInfo->index].point = point;
-    printk("Sense yPoint[%d]=%x; sense_read_data=%x\n",pSenseInfo->index, point, pSenseData[pSenseInfo->index].sense_val);
+    pSenseData[pSenseInfo->index].yPoint = point;
+    printk("Sense yPoint[%d]=%d; sense_read_data=%x\n",pSenseInfo->index, point, pSenseData[pSenseInfo->index].sense_val);
     return;
 }
 void lv2_sense_one_xpoint(struct lv2_info *priv, struct lv2_sense_one_info *pSenseInfo)
@@ -561,21 +671,25 @@ void lv2_sense_one_xpoint(struct lv2_info *priv, struct lv2_sense_one_info *pSen
     // About to write to sensor buffer, so lock now.
     spin_lock(&priv->lock);
     point = pSenseInfo->data;
-    lv2_sense_point(point, LV2_YPOINT, &sense_val, pSenseInfo->sense_delay);
+    lv2_sense_point(point, LV2_XPOINT, &sense_val, SENSOR_MIN_DELAY);
     pSenseData[pSenseInfo->index].sense_val = sense_val;
-    pSenseData[pSenseInfo->index].point = point;
-    printk("Sense xPoint[%d]=%x; rtn_data=%x; buf_data=%x\n",pSenseInfo->index, point, sense_val, pSenseData[pSenseInfo->index].sense_val);
+    pSenseData[pSenseInfo->index].xPoint = point;
+    printk("Sense xPoint[%d]=%d; rtn_data=%x; buf_data=%x\n",pSenseInfo->index, point, sense_val, pSenseData[pSenseInfo->index].sense_val);
     return;
 }
+#if 0
+// FIXME---PAH---MAY NOT NEED THESE
 static void lv2_move_xdata(struct lv2_xypoints *xyData, uint8_t strobe_on, uint8_t strobe_off, uint8_t beam_on_off)
 {
     uint8_t       beam_setting;
 
     beam_setting = inb(LG_IO_CNTRL2);  // Turn off beam
-    if (beam_on_off)
+    if (beam_on_off == LV2_BEAM_BRIGHT)
       beam_setting |= LASERENABLE | BRIGHTBEAM;  // light move, enable laser.
+    else if  (beam_on_off == LV2_BEAM_DARK)
+      beam_setting &= LASERDISABLE;  // Dark move, disable laser.
     else
-      beam_setting &= LASERDISABLE;            // dark move, disable laser
+      beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;
     outb(beam_setting, LG_IO_CNTRL2);  // Apply CNTRL2 setting
     lv2_send_to_dac(xyData->xPoint, strobe_on, strobe_off, LV2_XPOINT);
     return;
@@ -585,28 +699,35 @@ static void lv2_move_ydata(struct lv2_xypoints *xyData, uint8_t strobe_on, uint8
     uint8_t       beam_setting;
 
     beam_setting = inb(LG_IO_CNTRL2);  // Turn off beam
-    if (beam_on_off)
+    if (beam_on_off == LV2_BEAM_BRIGHT)
       beam_setting |= LASERENABLE | BRIGHTBEAM;  // light move, enable laser.
+    else if  (beam_on_off == LV2_BEAM_DARK)
+      beam_setting &= LASERDISABLE;  // Dark move, disable laser.
     else
-      beam_setting &= LASERDISABLE;    // dark move, disable laser.
+      beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;
     outb(beam_setting, LG_IO_CNTRL2);  // Apply CNTRL2 settings
     lv2_send_to_dac(xyData->yPoint, strobe_on, strobe_off, LV2_YPOINT);
     return;
 }
+#endif
 static void lv2_move_xydata(struct lv2_xypoints *xyData, uint8_t strobe_on, uint8_t strobe_off, uint8_t beam_on_off)
 {
-    lv2_move_xdata(xyData, strobe_on, strobe_off, beam_on_off);
-    lv2_move_ydata(xyData, strobe_on, strobe_off, beam_on_off);
+    lv2_send_xy_to_dac(xyData, strobe_on, strobe_off, beam_on_off);
     return;
 }
 static void lv2_move_xydata_dark(struct lv2_xypoints *xyData)
 {
-    lv2_move_xydata(xyData, STROBE_ON_LASER_OFF, STROBE_OFF_LASER_OFF, 0);
+    lv2_move_xydata(xyData, STROBE_ON_LASER_OFF, STROBE_OFF_LASER_OFF, LV2_BEAM_DARK);
+    return;
+}
+static void lv2_move_xydata_dim(struct lv2_xypoints *xyData)
+{
+    lv2_move_xydata(xyData, STROBE_ON_LASER_ON, STROBE_OFF_LASER_ON, LV2_BEAM_DIM);
     return;
 }
 static void lv2_move_xydata_lite(struct lv2_xypoints *xyData)
 {
-  lv2_move_xydata(xyData, STROBE_ON_LASER_ON, STROBE_OFF_LASER_ON, 1);
+  lv2_move_xydata(xyData, STROBE_ON_LASER_ON, STROBE_OFF_LASER_ON, LV2_BEAM_BRIGHT);
     return;
 }      
 static int lv2_proc_cmd(struct cmd_rw *p_cmd_data, struct lv2_info *priv)

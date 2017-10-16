@@ -38,7 +38,7 @@ void DoFilePutDone(struct lg_master *pLgMaster, char * parameters, uint32_t resp
 int InitCheckVersion(struct lg_master *pLgMaster);
 int InitVision(struct lg_master *pLgMaster);
 
-int WriteBufferToFS (char * name, int32_t Size );
+int WriteBufferToFS (char * name, char *fromBuff, int32_t Size );
 int ReadFromFS ( char *buff,   char * name, int32_t offset, int32_t request, int *bytes_read );
 
 int WriteBufferToFlash (char * name, int32_t Size );

@@ -160,9 +160,10 @@ struct event_times {
 // FIXME---PAH---NEED TO USE BOTH X & Y POINTS HERE
 struct write_sense_cs_data
 {
-  int16_t   point;
+  int16_t   xPoint;
+  int16_t   yPoint;
   uint8_t   sense_val;
-  uint8_t   pad[3];
+  uint8_t   pad[1];
 };
 struct lg_xydata {
   uint8_t   ctrl_flags;
@@ -193,15 +194,6 @@ struct lv2_xypoints {
   int16_t   xPoint;
   int16_t   yPoint;
   uint32_t  pad;  // Pad out for union conformance
-};
-struct lv2_sense_line_data {
-  uint32_t  sense_buf_idx;
-  uint32_t  numPoints;
-  uint16_t  step;
-  int16_t   point;
-  uint8_t   sense_delay;
-  uint8_t   point_delay;
-  uint8_t   pad[3];
 };
 struct write_sense_fssc_data
 {
