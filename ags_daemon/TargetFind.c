@@ -91,6 +91,7 @@ static int FindSensedTarget(struct lg_master *pLgMaster, int16_t startX, int16_t
     // Analyze data, look for at least 3 hits
     found_count = 0;
     low_index = 0;
+
     for (i = 0; i < numPoints; i++)
       {
 	if (pSenseFound[i].sense_val <= sense_threshold)

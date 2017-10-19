@@ -31,7 +31,7 @@
 #include <linux/laser_dev.h>
 #include <linux/serial_reg.h>
 
-#define LG_VERSION 	 "0.4"
+#define LG_VERSION 	 "0.5"
 
 enum point_type {
   LV2_XPOINT=1,
@@ -164,15 +164,15 @@ static void lv2_sense_point(int16_t point, uint8_t point_type, uint8_t *sense_va
 void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct write_sense_cs_data *pSenseData, uint32_t point_axis, uint8_t step_direction)
 {
     int16_t                    point;
-    int16_t                    target_xPoint;
-    int16_t                    target_yPoint;
+    int16_t                    target_xPoint = 0;
+    int16_t                    target_yPoint = 0;
     uint16_t                   i;
     uint8_t                    sense_delay;
     uint8_t                    sense_val;
     uint8_t                    target_sense_val;
 
     if (point_axis == LV2_XPOINT)
-      point  = pSenseInfo->xPoint;
+      point = pSenseInfo->xPoint;
     else
       point = pSenseInfo->yPoint;
     
@@ -182,6 +182,7 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
       sense_delay = pSenseInfo->point_delay;
 
     target_sense_val = 0xFF;
+
     for (i = 0; i < pSenseInfo->numPoints; i++)
       {
 	if (step_direction == LV2_ADD_STEP)
@@ -190,7 +191,9 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	  point -= pSenseInfo->step;
 	  
 	lv2_sense_point(point, point_axis, &sense_val, sense_delay);
+
 	pSenseData[pSenseInfo->sense_buf_idx].sense_val = sense_val;
+
 	if (point_axis == LV2_XPOINT)
 	  {
 	    pSenseData[pSenseInfo->sense_buf_idx].xPoint = point;
@@ -201,7 +204,9 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	    pSenseData[pSenseInfo->sense_buf_idx].yPoint = point;
 	    pSenseData[pSenseInfo->sense_buf_idx].xPoint = pSenseInfo->xPoint;
 	  }
+
 	pSenseInfo->sense_buf_idx++;
+
 	// Look for lowest sense-val (indicates closest point to actual target)
 	if (sense_val < target_sense_val)
 	  {
@@ -218,8 +223,10 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	    target_sense_val = sense_val;
 	  }
       }
+    
     printk("AV-LV2: DO-LINE-SENSE LOW XY=%d [%x], %d [%x], sense-val=%x\n",
-	   target_xPoint ,target_xPoint, target_yPoint, target_yPoint, target_sense_val); 
+	   target_xPoint, target_xPoint, target_yPoint, target_yPoint, target_sense_val); 
+
     return;
 }
 
@@ -318,16 +325,19 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
 
     // left-to-right, across top (X-ADD)
     new_point.xPoint = pSenseInfo->xData;
+    new_point.yPoint = pSenseInfo->yData + (new_point.numPoints * new_point.step);
     lv2_senseX_add(pSenseData, &new_point);
 
     // Advance Y to top right corner of box
     // Right side, DOWN (Y-SUB)
+    new_point.xPoint = pSenseInfo->xData + (new_point.numPoints * new_point.step);
     new_point.yPoint = pSenseInfo->yData + (new_point.numPoints * new_point.step);
     lv2_senseY_sub(pSenseData, &new_point);
 
     // Advance X to top right corner of box
     // right-to-left, across bottom (X-SUB)
     new_point.xPoint = pSenseInfo->xData + (new_point.numPoints * new_point.step);
+    new_point.yPoint = pSenseInfo->yData;
     lv2_senseX_sub(pSenseData, &new_point);
     return;	
 }

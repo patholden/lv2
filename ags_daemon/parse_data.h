@@ -478,7 +478,7 @@ struct parse_flexcalxfrm_resp {
   uint32_t         coplanartgts;
   uint16_t         resp_crc;
 } __attribute__ ((packed));
- struct parse_getdacs_resp {
+struct parse_getdacs_resp {
    struct k_header  hdr;
    uint32_t     x_dac;
    uint32_t     y_dac;
