@@ -96,26 +96,9 @@ compile.h:
 clean:
 	rm -f *.o agsd compile.h *~
 usb_install:
-	cp agsd $(BUILDROOTFSDIR)/laser/sbin
-	cp $(AGSCFGDIR)/autofocus.txt $(BUILDROOTFSDIR)/laser/data/autofocus
-	cp $(AGSCFGDIR)/visionfocus.txt $(BUILDROOTFSDIR)/laser/data/focusvision
-	cp $(AGSCFGDIR)/visionparameters.txt $(BUILDROOTFSDIR)/laser/data/vision
-	cp $(AGSCFGDIR)/calibration.txt $(BUILDROOTFSDIR)/laser/data/calib
-	cp $(AGSCFGDIR)/information.txt $(BUILDROOTFSDIR)/laser/data/info
-	cp $(AGSCFGDIR)/initialization.txt $(BUILDROOTFSDIR)/laser/data/init
-	unix2dos $(BUILDROOTFSDIR)/laser/data/autofocus
-	unix2dos $(BUILDROOTFSDIR)/laser/data/focusvision
-	unix2dos $(BUILDROOTFSDIR)/laser/data/vision
-	unix2dos $(BUILDROOTFSDIR)/laser/data/calib
-	unix2dos $(BUILDROOTFSDIR)/laser/data/info
-	unix2dos $(BUILDROOTFSDIR)/laser/data/init
-	touch $(BUILDROOTFSDIR)/laser/data/hobbs
-	chmod +w $(BUILDROOTFSDIR)/laser/data/*
 	cp $(AGSCFGDIR)/S95agsd.USBSTICK $(BUILDROOTFSDIR)/etc/init.d/S95agsd
-	chmod 777 $(BUILDROOTFSDIR)/etc/init.d/S95agsd
-	cp $(AGSCFGDIR)/usb_fstab $(BUILDROOTFSDIR)/etc/fstab
-	cp $(AGSCFGDIR)/skeleton.mk $(BUILDROOTDIR)/package/skeleton/
 	cp agsd $(BUILDROOTFSDIR)/usr/sbin
+	chmod 777 $(BUILDROOTFSDIR)/etc/init.d/S95agsd
 	chmod 777 $(BUILDROOTFSDIR)/usr/sbin/agsd
 # NOTE:  After running "make usb_install", need to re-run buildroot "make".
 #        This will rebuild the output/images/rootfs.ext2 file-system package
@@ -127,7 +110,7 @@ burnusb:
 	sudo mount -o loop,ro $(BUILDROOTDIR)/output/images/rootfs.ext2 $(BUILDROOTDIR)/output/ext2
 	sudo cp -avrf $(BUILDROOTDIR)/output/ext2/* /mnt/stick
 	sudo cp $(BUILDROOTDIR)/output/images/bzImage /mnt/stick
-	sudo cp $(AGSCFGDIR)/extlinux.conf /mnt/stick
+	sudo cp -L $(AGSCFGDIR)/extlinux.conf /mnt/stick
 	sudo echo "\0" > /tmp/zero
 	sudo cp /tmp/zero /mnt/stick/laser/data/hobbs
 	sudo umount /dev/sdb1

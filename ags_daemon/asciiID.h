@@ -1,4 +1,4 @@
 
 
 #define AGS_ASCII_ID \
-          "  version 200.990"
+          "  version 200.888"

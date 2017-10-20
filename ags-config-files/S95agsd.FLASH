@@ -7,7 +7,7 @@
 #
 start() {
     printf "Starting AGS LASERVISION daemon  (onboard flash)\n"
-    # mount data partition and copy files over
+    # mount -a
     mount /dev/mmcblk0p2 /flash
     cp /flash/sbin/agsd /usr/sbin/agsd
     cp /flash/data/*    /laser/data

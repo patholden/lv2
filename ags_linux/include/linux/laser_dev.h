@@ -26,6 +26,8 @@
 #define LTC1597_BIPOLAR_MAX          0x7FFF
 #define LTC1597_BIPOLAR_MAX_INP_VAL1 0x7FFF
 #define LTC1597_BIPOLAR_MAX_INP_VAL2 0x8000
+#define DAC_MAX_SIGNED               0x7FFF
+#define DAC_MIN_SIGNED               (-DAC_MAX_SIGNED)
 #define SHORT_MAX_OVERFLOW           0x10000
 #define SENSOR_DEF_FREQ              40
 #define SENSOR_MAX_POLL_NUM          100

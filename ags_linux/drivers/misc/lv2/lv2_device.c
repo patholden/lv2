@@ -161,6 +161,47 @@ static void lv2_sense_point(int16_t point, uint8_t point_type, uint8_t *sense_va
     udelay(sense_delay);    // Wait minimum of 20 usec (minimum is set to 25) to process next x or y point.
     return;
 }
+static void lv_adjust_start_xy(int16_t origX, int16_t origY, int16_t *newStartX, int16_t *newStartY, struct lv2_sense_line_data *pSenseInfo)
+{
+    int32_t       add_maxX;
+    int32_t       add_maxY;
+    int32_t       sub_minX;
+    int32_t       sub_minY;
+  
+    *newStartX = origX;
+    *newStartY = origY;
+
+    // Make sure to do 32-bit operation to account for overflow
+    add_maxX = origX + (pSenseInfo->step * pSenseInfo->numPoints); 
+    add_maxY = origY + (pSenseInfo->step * pSenseInfo->numPoints); 
+    sub_minX = origX - (pSenseInfo->step * pSenseInfo->numPoints); 
+    sub_minY = origY - (pSenseInfo->step * pSenseInfo->numPoints); 
+    printk("AV-LV2: ADJUST_X: add_max = %d[%x], sub_min = %d[%x]\n", add_maxX, add_maxX, sub_minX, sub_minX);
+    printk("AV-LV2: ADJUST_Y: add_max = %d[%x], sub_min = %d[%x]\n", add_maxY, add_maxY, sub_minY, sub_minY);
+	
+    // Check positive direction
+    if ((int16_t)add_maxX > DAC_MAX_SIGNED)
+      *newStartX -= (int16_t)(add_maxX - DAC_MAX_SIGNED);
+    if ((int16_t)add_maxY > DAC_MAX_SIGNED)
+      *newStartY -= (int16_t)(add_maxY - DAC_MAX_SIGNED);
+    // Check negative direction
+    if ((int16_t)sub_minX < DAC_MIN_SIGNED)
+      *newStartX += (int16_t)(sub_minX - DAC_MIN_SIGNED);
+    if ((int16_t)sub_minY < DAC_MIN_SIGNED)
+      *newStartY += (int16_t)(sub_minY - DAC_MIN_SIGNED);
+
+    // Check to see if it changed (debug-mode only)
+    if (*newStartX != origX)
+      {
+	printk("AV-LV2: ADJUST_X CHANGE!  OrigX = %d[%x], NewX=%d[%x]\n", origX, origX, *newStartX, *newStartX);
+      }
+    if (*newStartY != origY)
+      {
+	printk("AV-LV2: ADJUST_Y CHANGE!  OrigY = %d[%x], NewY=%d[%x]\n", origY, origY, *newStartY, *newStartY);
+      }
+    return;
+}
+
 void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct write_sense_cs_data *pSenseData, uint32_t point_axis, uint8_t step_direction)
 {
     int16_t                    point;
@@ -186,12 +227,23 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
     for (i = 0; i < pSenseInfo->numPoints; i++)
       {
 	if (step_direction == LV2_ADD_STEP)
-	  point += pSenseInfo->step;
+	    point += pSenseInfo->step;
 	else if (step_direction == LV2_SUB_STEP)
-	  point -= pSenseInfo->step;
-	  
+	    point -= pSenseInfo->step;
 	lv2_sense_point(point, point_axis, &sense_val, sense_delay);
 
+	if (point_axis == LV2_XPOINT)
+	  {
+	    printk("AV-LV2: DO-LINE-SENSE X = %d [%x], Y = %d [%x], sense-val=%x, step=%d, numPts=%d\n",
+		   point, point, pSenseInfo->yPoint, pSenseInfo->yPoint,
+		   sense_val, pSenseInfo->step, pSenseInfo->numPoints);
+	  }
+	else
+	  {
+	    printk("AV-LV2: DO-LINE-SENSE X = %d [%x], Y = %d [%x], sense-val=%x, step=%d, numPts=%d\n",
+		   pSenseInfo->xPoint, pSenseInfo->xPoint, point, point,
+		   sense_val, pSenseInfo->step, pSenseInfo->numPoints);
+	  }
 	pSenseData[pSenseInfo->sense_buf_idx].sense_val = sense_val;
 
 	if (point_axis == LV2_XPOINT)
@@ -206,6 +258,7 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	  }
 
 	pSenseInfo->sense_buf_idx++;
+ 	printk("AV-LV2: DO-LINE-SENSE buf_idx =%d\n", pSenseInfo->sense_buf_idx);
 
 	// Look for lowest sense-val (indicates closest point to actual target)
 	if (sense_val < target_sense_val)
@@ -223,10 +276,6 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	    target_sense_val = sense_val;
 	  }
       }
-    
-    printk("AV-LV2: DO-LINE-SENSE LOW XY=%d [%x], %d [%x], sense-val=%x\n",
-	   target_xPoint, target_xPoint, target_yPoint, target_yPoint, target_sense_val); 
-
     return;
 }
 
@@ -294,8 +343,10 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
     new_point.numPoints = pSenseInfo->numPoints;
     new_point.point_delay = pSenseInfo->point_delay;
     new_point.point_delay = SENSOR_MIN_DELAY;
-    new_point.xPoint  = pSenseInfo->xData;
-    new_point.yPoint  = pSenseInfo->yData;
+
+    // Adjust start X/Y so they don't cause system fault
+    // conditions
+    lv_adjust_start_xy(pSenseInfo->xData, pSenseInfo->yData, &new_point.xPoint, &new_point.yPoint, &new_point);
     
     // NOTE:  Leave next lines as-is.
     // Sometimes there's a spike when beam is turned on,
@@ -342,6 +393,7 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
     return;	
 }
 
+//  This function is the main coarse-scan function used by AGSD
 int lv2_coarse_scan_box(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
 {
     lv2_coarse_scan_box_op(priv, pSenseInfo, LV2_LASER_ON);
@@ -350,6 +402,7 @@ int lv2_coarse_scan_box(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo
     return(0);
 }
 
+//  This function is only used for hardware debug purposes
 int lv2_coarse_scan_box_dark(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
 {
     lv2_coarse_scan_box_op(priv, pSenseInfo, LV2_LASER_OFF);

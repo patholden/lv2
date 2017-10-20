@@ -8,7 +8,9 @@
 start() {
     sleep  5
     printf "Starting AGS LASERVISION daemon  (usb stick)\n"
-    cp /laser/sbin/agsd /usr/sbin/agsd
+    mount /dev/mmcblk0p2 /flash
+    cp /flash/data/*    /laser/data
+    umount /flash
     # if need be, change IP address
     grep -i ipaddress /laser/data/init > /dev/null
     if [ $? -eq 0 ] ; then
