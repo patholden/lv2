@@ -446,7 +446,6 @@ int FindTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
       return(-1);
 
     syslog(LOG_NOTICE, "CoarseScan(): TARGET FOUND at x=%d[%x],y=%d[%x]", *foundX,*foundX,*foundY, *foundY);
-    return(0);
     
     // Got a target. Next phase, find endpoints for super-fine scan
     newX = *foundX;

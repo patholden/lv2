@@ -232,6 +232,7 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	    point -= pSenseInfo->step;
 	lv2_sense_point(point, point_axis, &sense_val, sense_delay);
 
+#if 0
 	if (point_axis == LV2_XPOINT)
 	  {
 	    printk("AV-LV2: DO-LINE-SENSE X = %d [%x], Y = %d [%x], sense-val=%x, step=%d, numPts=%d\n",
@@ -244,6 +245,7 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 		   pSenseInfo->xPoint, pSenseInfo->xPoint, point, point,
 		   sense_val, pSenseInfo->step, pSenseInfo->numPoints);
 	  }
+#endif
 	pSenseData[pSenseInfo->sense_buf_idx].sense_val = sense_val;
 
 	if (point_axis == LV2_XPOINT)
@@ -258,7 +260,6 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	  }
 
 	pSenseInfo->sense_buf_idx++;
- 	printk("AV-LV2: DO-LINE-SENSE buf_idx =%d\n", pSenseInfo->sense_buf_idx);
 
 	// Look for lowest sense-val (indicates closest point to actual target)
 	if (sense_val < target_sense_val)
@@ -417,31 +418,14 @@ void do_line_fssc_operation(struct lv2_sense_line_data *pSenseInfo, int16_t *end
     uint16_t                   i;
     uint8_t                    sense_delay;
     uint8_t                    sense_val;
-    uint8_t                    beam_setting;
 
     if (point_axis == LV2_XPOINT)
       point  = pSenseInfo->xPoint;
     else
       point  = pSenseInfo->yPoint;
 
+    *endPoint = LTC1597_BIPOLAR_OFFSET_MAX;
     // Set up delay
-    if (pSenseInfo->point_delay < SENSOR_MIN_DELAY)
-      sense_delay = SENSOR_MIN_DELAY;
-    else
-      sense_delay = pSenseInfo->point_delay;
-
-    // Do the first-point 3 times to avoid false readings while LASER comes up
-    // Set beam to LASER ENABLED & ON, DIM SETTING
-    beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
-    beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;   // light move, enable laser.
-    outb(beam_setting, LG_IO_CNTRL2);
-    
-    lv2_sense_point(point, point_axis, &sense_val, sense_delay);
-    lv2_sense_point(point, point_axis, &sense_val, sense_delay);
-    lv2_sense_point(point, point_axis, &sense_val, sense_delay);
-    beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
-    outb(beam_setting, LG_IO_CNTRL2);
-
     if (pSenseInfo->point_delay < SENSOR_MIN_DELAY)
       sense_delay = SENSOR_MIN_DELAY;
     else
@@ -457,22 +441,22 @@ void do_line_fssc_operation(struct lv2_sense_line_data *pSenseInfo, int16_t *end
 	  point--;
 
 	lv2_sense_point(point, point_axis, &sense_val, sense_delay);
-	printk("FSSC-DO-LINE: point=%d,sense_val=%x\n", point, sense_val);
+	printk("DO-LINE-FSSC: point=%d,sense_val=%x\n", point, sense_val);
 	// Look for lowest sense-val (indicates closest point to actual target)
 	if (sense_val < *target_sense_val)
 	  {
 	    *target_point = point;
 	    *target_sense_val = sense_val;
 	  }
-	
 	if (sense_val > FSSC_THRESHOLD)
 	  {
 	     *endPoint = point;
+#if 0
 	     return;
+#endif
 	  }
 	udelay(sense_delay);    // Wait 40 usec to process next.
       }
-    *endPoint = LTC1597_BIPOLAR_OFFSET_MAX;
     return;
 }
 
@@ -529,6 +513,8 @@ int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
     int16_t                        target_point2;
     uint8_t                        target_sense_val1;
     uint8_t                        target_sense_val2;
+    uint8_t                        beam_setting;
+    uint8_t                        sense_val;
     
     pSenseData = (struct write_sense_fssc_data *)priv->pSenseBuff;
     if (pSenseData == NULL)
@@ -558,10 +544,20 @@ int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
     new_point.yPoint  = pSenseInfo->yData;
     printk("FSSC-START:  XY=%d,%d\n",new_point.xPoint, new_point.yPoint);
     
-    // NOTE:  Leave next lines as-is.
-    // Sometimes there's a spike when beam is turned on,
-    // so do per-point write-sense for first 2 points
+    // NOTE:  Leave next lines as-is.  Takes laser a bit to start up and
+    // then sometimes there's a spike when beam is turned on,
+    // so do per-point write-sense & debounce sense-buffer-register
     // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
+    beam_setting = inb(LG_IO_CNTRL2);
+    beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;
+    outb(beam_setting, LG_IO_CNTRL2);
+    lv2_sense_point(new_point.yPoint, LV2_YPOINT, &sense_val, pSenseInfo->point_delay);
+    sense_val = inb(TFPORTRL);
+    sense_val = inb(TFPORTRL);
+    sense_val = inb(TFPORTRL);
+    beam_setting |= LASERENABLE | BRIGHTBEAM;
+    outb(beam_setting, LG_IO_CNTRL2);
+    // NOTE:  END OF special-case first point.
 
     // Go UP (Y-ADD), search for top endpoint
     printk("FSSC-YADD: XY=%d,%d\n", new_point.xPoint, new_point.yPoint);
@@ -585,12 +581,10 @@ int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
 
     // Move to point closest to target to start search left & right
     xyData.xPoint  = pSenseInfo->xData;
-    if (target_sense_val1 > target_sense_val2)
-      xyData.yPoint = target_point2;
-    else
-      xyData.yPoint = target_point1;
+    xyData.yPoint = (pSenseData->TopEndpoints.yPoint + pSenseData->BottomEndpoints.yPoint)/2;
       
-    printk("FSSC-MOVING TO POINT CLOSEST TO TARGET: X=%d, Y=%d\n", xyData.xPoint, xyData.yPoint);
+    printk("FSSC-MOVING TO Y midpoint: X=%d[%x], Y=%d[%x], orig Y=%d[%x]\n", xyData.xPoint, xyData.xPoint,
+	   xyData.yPoint, xyData.yPoint, pSenseInfo->yData, pSenseInfo->yData);
     lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
     
     new_point.xPoint = xyData.xPoint;
@@ -679,7 +673,7 @@ int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
 
     // Turn on beam, bright intensity
     beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
-    beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
+    beam_setting |= LASERENABLE | BRIGHTBEAM;
     outb(beam_setting, LG_IO_CNTRL2);
 
     for (i = 0; i < pSenseInfo->numLines; i++)
