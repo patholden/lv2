@@ -32,7 +32,7 @@ static int doLv2WriteCmd(struct lg_master *pLgMaster, void *pData, uint32_t data
     int     rc=0;
     struct  cmd_rw_base   *pCmdData;
 
-    if (!pData)
+    if (!pData || !pLgMaster)
       return(-1);
 
     pCmdData = (struct cmd_rw_base *)malloc(sizeof(struct cmd_rw_base));
@@ -51,12 +51,13 @@ static int doLv2WriteCmd(struct lg_master *pLgMaster, void *pData, uint32_t data
 
 void lv_setpoints_dark(struct lg_master *pLgMaster, struct lv2_xypoints *xyData)
 {
-  syslog(LOG_NOTICE,"LV_SETDARK:  x=%x,y=%x", xyData->xPoint, xyData->yPoint);
+    syslog(LOG_NOTICE,"LV_SETDARK:  x=%x,y=%x", xyData->xPoint, xyData->yPoint);
     doLv2WriteCmd(pLgMaster, (void *)xyData, sizeof(struct lv2_xypoints), CMDW_LV2_MVXYDARK);
     return;
 }
 void lv_setpoints_lite(struct lg_master *pLgMaster, struct lv2_xypoints *xyData)
 {
+    syslog(LOG_NOTICE,"LV_SETLITE:  x=%x,y=%x", xyData->xPoint, xyData->yPoint);
     doLv2WriteCmd(pLgMaster, (void *)xyData, sizeof(struct lv2_xypoints), CMDW_LV2_MVXYLITE);
     return;
 }

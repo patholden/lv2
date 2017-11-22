@@ -11,7 +11,7 @@
 #define COARSE_SCAN_STEP        10
 #define COARSE_SCAN_NUM_POINTS   5
 #define COARSE_SCAN_MIN_FOUND    3
-#define COARSE_SCAN_MAX_LOOPS   100
+#define COARSE_SCAN_MAX_LOOPS  100
 #define CS_SENSE_THRESHOLD    0x30
 #define CS_SENSE_HITS            3
 

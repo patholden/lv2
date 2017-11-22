@@ -13,7 +13,7 @@
 
 // In sensor mode, use this as indicator that target may be nearby sensed
 // xy pair
-#define SENSE_MAX_THRESHOLD          0x3F0
+#define SENSE_MAX_THRESHOLD          0x3F0   // used by old driver
 #define SENSOR_WRITE_FREQ            30
 #define SENSOR_READ_FREQ             100
 
@@ -92,7 +92,7 @@ typedef enum{
   CMDW_DISPLAY,
   CMDW_DODARKMOVE,
   CMDW_QUICKCHECK,
-  CMDW_SETDELTA,
+ CMDW_SETDELTA,
   CMDW_GOANGLE,
   CMDW_LOADWRTCNT,
   CMDW_SETQCCOUNTER,
@@ -146,6 +146,9 @@ typedef enum{
 #define DO_TEST_DISPLAY  0x1     // USED BY DIAGS.  Will simulate DISPLAY mode
 #define FSSC_THRESHOLD   0xE0    // Indicator for target-not-found when looking
                                  //   for super-scan endpoints
+#define FSSC_LOW_THRESHOLD  0x30 // Indicator for find-super-scan-coords to locate target dead center
+#define FSSC_LOW_COUNT      250   // Number of XY points to locate target dead center
+#define FSSC_LOW_STEP        5   // Step for XY points when locating dead center of target
 
 struct hobbs_ctrs {
   time_t    hobbs_time;

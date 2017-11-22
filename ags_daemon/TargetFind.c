@@ -26,6 +26,7 @@ static char rcsid[] = "$Id$";
 #include "Protocol.h"
 #include "comm_loop.h"
 #include "parse_data.h"
+#include "LaserInterface.h"
 
 // Static prototypes for local functions
 
@@ -281,17 +282,16 @@ int FindSuperScanCoords(struct lg_master *pLgMaster, int16_t startX, int16_t sta
     // Set up parameters for driver scan
     sense_data.step = FSSC_SCAN_STEP;
     sense_data.numPoints = FSSC_SCAN_NUMPOINTS;
-   
     sense_data.xData = startX;
     sense_data.yData = startY;
-
+    
     // First move mirrors to start x,y location
     xydata.xPoint = startX; 
     xydata.yPoint = startY; 
-    lv_setpoints_dark(pLgMaster, (struct lv2_xypoints *)&xydata);
+    lv_setpoints_lite(pLgMaster, (struct lv2_xypoints *)&xydata);
+    syslog(LOG_DEBUG, "find-ss-coords(): START with XY=%d[%x],%d[%x]", startX,startX,startY,startY);
     usleep(250);
 
-    syslog(LOG_DEBUG, "FIND_SS_COORDS:  startXY=%x,%x\n", startX, startY);
     lv_find_ss_coords_sense_cmd(pLgMaster, (struct lv2_sense_info *)&sense_data);
     rc = read(pLgMaster->fd_lv2, (uint8_t *)pSenseFound, sizeof(struct write_sense_fssc_data));
     if (rc < 0)
@@ -309,7 +309,7 @@ int FindSuperScanCoords(struct lg_master *pLgMaster, int16_t startX, int16_t sta
 	&& (pSenseFound->BottomEndpoints.xPoint == 0xFFFF)
 	&& (pSenseFound->BottomEndpoints.yPoint == 0xFFFF))
       {
-	syslog(LOG_ERR, "SuperScan Coords not found for xy=%x,%x!", startX, startY);
+	syslog(LOG_ERR, "SuperScan Coords not found for xy=%d[%x],%d[%x]!", startX, startX, startY, startY);
 	free((uint8_t *)pSenseFound);
 	return(-1);
       }
@@ -448,14 +448,15 @@ int FindTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     syslog(LOG_NOTICE, "CoarseScan(): TARGET FOUND at x=%d[%x],y=%d[%x]", *foundX,*foundX,*foundY, *foundY);
     
     // Got a target. Next phase, find endpoints for super-fine scan
-    newX = *foundX;
-    newY = *foundY;
+    ConvertBinaryToBinary(pLgMaster, *foundX, *foundY, &newX, &newY);
+    syslog(LOG_DEBUG, "COARSE-SCAN-FOUND:  StartXY1=%d[%x],%d[%x]; CorrectXY=%d[%x],%d[%x]",
+	   *foundX, *foundX, *foundY, *foundY, newX, newX, newY, newY);
     rc = FindSuperScanCoords(pLgMaster, newX, newY, foundX, foundY, &numLines, &numPoints);
     if (rc)
       return(rc);
     if ((*foundX == 0) && (*foundY == 0))
       {
-	syslog(LOG_ERR, "FindSSCoords(): Target not found for XY=%x,%x", startX, startY);
+	syslog(LOG_ERR, "FindSSCoords(): Target not found for XY=%x,%x", newX, newY);
 	return(-1);
       }
     if ((numLines == 0) || (numPoints == 0))
@@ -465,8 +466,6 @@ int FindTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
       }
 	
     syslog(LOG_NOTICE, "FindSSCoords(): Found target at x=%x,y=%x, numPoints=%d, numLines=%d", *foundX, *foundY, numPoints, numLines);
-    return(0);
-
     newX = *foundX;
     newY = *foundY;
     rc = SuperScan(pLgMaster, newX, newY, numLines, numPoints, foundX, foundY);

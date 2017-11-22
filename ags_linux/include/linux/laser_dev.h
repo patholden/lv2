@@ -31,7 +31,8 @@
 #define SHORT_MAX_OVERFLOW           0x10000
 #define SENSOR_DEF_FREQ              40
 #define SENSOR_MAX_POLL_NUM          100
-#define SENSOR_MIN_DELAY             25
+#define SENSOR_MIN_DELAY             10
+#define FSSC_LOW_MIN_DELAY           25
 
 // embedded driver coarse-scan defines
 enum lv2_step_type {

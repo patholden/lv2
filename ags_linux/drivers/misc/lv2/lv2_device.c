@@ -232,7 +232,6 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	    point -= pSenseInfo->step;
 	lv2_sense_point(point, point_axis, &sense_val, sense_delay);
 
-#if 0
 	if (point_axis == LV2_XPOINT)
 	  {
 	    printk("AV-LV2: DO-LINE-SENSE X = %d [%x], Y = %d [%x], sense-val=%x, step=%d, numPts=%d\n",
@@ -245,7 +244,6 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 		   pSenseInfo->xPoint, pSenseInfo->xPoint, point, point,
 		   sense_val, pSenseInfo->step, pSenseInfo->numPoints);
 	  }
-#endif
 	pSenseData[pSenseInfo->sense_buf_idx].sense_val = sense_val;
 
 	if (point_axis == LV2_XPOINT)
@@ -260,6 +258,7 @@ void do_line_sense_operation(struct lv2_sense_line_data *pSenseInfo, struct writ
 	  }
 
 	pSenseInfo->sense_buf_idx++;
+ 	printk("AV-LV2: DO-LINE-SENSE buf_idx =%d\n", pSenseInfo->sense_buf_idx);
 
 	// Look for lowest sense-val (indicates closest point to actual target)
 	if (sense_val < target_sense_val)
@@ -418,45 +417,59 @@ void do_line_fssc_operation(struct lv2_sense_line_data *pSenseInfo, int16_t *end
     uint16_t                   i;
     uint8_t                    sense_delay;
     uint8_t                    sense_val;
+    uint8_t                    beam_setting;
 
     if (point_axis == LV2_XPOINT)
       point  = pSenseInfo->xPoint;
     else
       point  = pSenseInfo->yPoint;
 
-    *endPoint = LTC1597_BIPOLAR_OFFSET_MAX;
     // Set up delay
     if (pSenseInfo->point_delay < SENSOR_MIN_DELAY)
       sense_delay = SENSOR_MIN_DELAY;
     else
       sense_delay = pSenseInfo->point_delay;
 
-    numPoints = 500;
+    // Do the first-point 3 times to avoid false readings while LASER comes up
+    // Set beam to LASER ENABLED & ON, DIM SETTING
+    beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
+    beam_setting |= (LASERENABLE | BRIGHTBEAM);   // light move, enable laser.
+    outb(beam_setting, LG_IO_CNTRL2);
+    
+    lv2_sense_point(point, point_axis, &sense_val, sense_delay);
+    lv2_sense_point(point, point_axis, &sense_val, sense_delay);
+    lv2_sense_point(point, point_axis, &sense_val, sense_delay);
+
+    // NOTE:  numPoints is a guestimate on how big the target may be, it could be user-provided?
+    numPoints = 1000;
     *target_sense_val = 0xFF;
     for (i = 0; i < numPoints; i++)
       {
 	if (step_direction == LV2_ADD_STEP)
-	  point++;
+	  point+= 2;
 	else if (step_direction == LV2_SUB_STEP)
-	  point--;
+	  point-= 2;
 
 	lv2_sense_point(point, point_axis, &sense_val, sense_delay);
-	printk("DO-LINE-FSSC: point=%d,sense_val=%x\n", point, sense_val);
+	printk("FSSC-DO-LINE: point=%d,sense_val=%x\n", point, sense_val);
 	// Look for lowest sense-val (indicates closest point to actual target)
 	if (sense_val < *target_sense_val)
 	  {
 	    *target_point = point;
 	    *target_sense_val = sense_val;
 	  }
+	
 	if (sense_val > FSSC_THRESHOLD)
 	  {
 	     *endPoint = point;
-#if 0
 	     return;
-#endif
 	  }
 	udelay(sense_delay);    // Wait 40 usec to process next.
       }
+    if (point_axis == LV2_XPOINT)
+      *endPoint  = pSenseInfo->xPoint;
+    else
+      *endPoint  = pSenseInfo->yPoint;
     return;
 }
 
@@ -504,17 +517,177 @@ void lv2_FindXEndpoint_sub(struct write_sense_fssc_data *pSenseWriteData, struct
     return;
 }
 
+int lv2_find_ssc_center(struct lv2_xypoints *startXY, int16_t *CtrX, int16_t *CtrY)
+{
+    struct write_sense_cs_data    tmp_sense_data;
+    struct write_sense_cs_data    low_sense_data[4];
+    struct lv2_xypoints           xyData;
+    int                           i;
+    int16_t                       ctrX;
+    int16_t                       ctrY;
+    uint8_t                       start_sense_val;
+    uint8_t                       beam_setting;
+    uint8_t                       low_sense_val=0xFF;
+    uint8_t                       low_index=0xFF;
+    
+    // Do a "mini-cross" section of the point found during coarse-scan to locate center
+    // point of the target
+    // Turn on beam, bright intensity
+    beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
+    beam_setting |= (LASERENABLE | BRIGHTBEAM);   // light move, enable laser.
+    outb(beam_setting, LG_IO_CNTRL2);
+    
+    // Move beam to x, y spot
+    xyData.xPoint = startXY->xPoint;
+    xyData.yPoint = startXY->yPoint;
+    lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
+    udelay(100);
+    lv2_sense_point(startXY->xPoint, LV2_XPOINT, (uint8_t *)&start_sense_val, FSSC_LOW_MIN_DELAY);
+    lv2_sense_point(startXY->xPoint, LV2_XPOINT, (uint8_t *)&start_sense_val, FSSC_LOW_MIN_DELAY);
+    lv2_sense_point(startXY->xPoint, LV2_XPOINT, (uint8_t *)&start_sense_val, FSSC_LOW_MIN_DELAY);
+    // Seed the low point structs
+    for (i = 0; i < 3; i++)
+      {
+	low_sense_data[i].sense_val = start_sense_val;
+	low_sense_data[i].xPoint  = startXY->xPoint;
+	low_sense_data[i].yPoint  = startXY->yPoint;
+      }
+
+    ctrX = startXY->xPoint;
+    ctrY = startXY->yPoint;
+
+    // Collect sense info with X axis
+    // X-ADD
+    for (i = 0; i < FSSC_LOW_COUNT; i++)
+      {
+	tmp_sense_data.xPoint = ctrX + (i + FSSC_LOW_STEP);
+	tmp_sense_data.yPoint = ctrY;
+	lv2_sense_point(tmp_sense_data.xPoint, LV2_XPOINT, (uint8_t *)&tmp_sense_data.sense_val, FSSC_LOW_MIN_DELAY);
+	if (tmp_sense_data.sense_val <= low_sense_data[0].sense_val)
+	  {
+	    low_sense_data[0].sense_val = tmp_sense_data.sense_val;
+	    low_sense_data[0].xPoint = tmp_sense_data.xPoint;
+	    low_sense_data[0].yPoint = tmp_sense_data.yPoint;
+	    printk("FSSC_CTR:  new low:  XY=%d[%x],%d[%x] sense_val=%x\n",
+		   tmp_sense_data.xPoint, tmp_sense_data.xPoint,
+		   tmp_sense_data.yPoint, tmp_sense_data.yPoint,
+		   tmp_sense_data.sense_val);
+	  }
+      }
+    // Move beam back to x, y spot
+    ctrX = startXY->xPoint;
+    ctrY = startXY->yPoint;
+    xyData.xPoint = ctrX;
+    xyData.yPoint = ctrY;
+    lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
+    udelay(100);
+    
+    // X-SUB
+    for (i = 0; i < FSSC_LOW_COUNT; i++)
+      {
+	tmp_sense_data.xPoint = ctrX + (i - FSSC_LOW_STEP);
+	tmp_sense_data.yPoint = ctrY;
+	lv2_sense_point(tmp_sense_data.xPoint, LV2_XPOINT, (uint8_t *)&tmp_sense_data.sense_val, FSSC_LOW_MIN_DELAY);
+	if (tmp_sense_data.sense_val <= low_sense_data[1].sense_val)
+	  {
+	    low_sense_data[1].sense_val = tmp_sense_data.sense_val;
+	    low_sense_data[1].xPoint = tmp_sense_data.xPoint;
+	    low_sense_data[1].yPoint = tmp_sense_data.yPoint;
+	    printk("FSSC_CTR:  new low:  XY=%d[%x],%d[%x] sense_val=%x\n",
+		   tmp_sense_data.xPoint, tmp_sense_data.xPoint,
+		   tmp_sense_data.yPoint, tmp_sense_data.yPoint,
+		   tmp_sense_data.sense_val);
+	  }
+      }
+    // Collect sense info with Y axis
+    ctrX = startXY->xPoint;
+    ctrY = startXY->yPoint;
+
+    // Move beam to new x, y spot
+    xyData.xPoint = ctrX;
+    xyData.yPoint = ctrY;
+    lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
+    udelay(100);
+    
+    // Y-ADD
+    for (i = 0; i < FSSC_LOW_COUNT; i++)
+      {
+	tmp_sense_data.xPoint = ctrX;
+	tmp_sense_data.yPoint = ctrY + (i + FSSC_LOW_STEP);
+	lv2_sense_point(tmp_sense_data.yPoint, LV2_YPOINT, (uint8_t *)&tmp_sense_data.sense_val, FSSC_LOW_MIN_DELAY);
+	if (tmp_sense_data.sense_val <= low_sense_data[2].sense_val)
+	  {
+	    low_sense_data[2].sense_val = tmp_sense_data.sense_val;
+	    low_sense_data[2].xPoint = tmp_sense_data.xPoint;
+	    low_sense_data[2].yPoint = tmp_sense_data.yPoint;
+	    printk("FSSC_CTR:  new low:  XY=%d[%x],%d[%x] sense_val=%x\n",
+		   tmp_sense_data.xPoint, tmp_sense_data.xPoint,
+		   tmp_sense_data.yPoint, tmp_sense_data.yPoint,
+		   tmp_sense_data.sense_val);
+	  }
+      }
+    // Y-SUB
+    ctrX = startXY->xPoint;
+    ctrY = startXY->yPoint;
+
+    // Move beam to new x, y spot
+    xyData.xPoint = ctrX;
+    xyData.yPoint = ctrY;
+    lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
+    udelay(100);
+    
+    for (i = 0; i < FSSC_LOW_COUNT; i++)
+      {
+	tmp_sense_data.xPoint = ctrX;
+	tmp_sense_data.yPoint = ctrY + (i - FSSC_LOW_STEP);
+	lv2_sense_point(tmp_sense_data.yPoint, LV2_YPOINT, (uint8_t *)&tmp_sense_data.sense_val, FSSC_LOW_MIN_DELAY);
+	if (tmp_sense_data.sense_val <= low_sense_data[3].sense_val)
+	  {
+	    low_sense_data[3].sense_val = tmp_sense_data.sense_val;
+	    low_sense_data[3].xPoint = tmp_sense_data.xPoint;
+	    low_sense_data[3].yPoint = tmp_sense_data.yPoint;
+	    printk("FSSC_CTR:  new low:  XY=%d[%x],%d[%x] sense_val=%x\n",
+		   tmp_sense_data.xPoint, tmp_sense_data.xPoint,
+		   tmp_sense_data.yPoint, tmp_sense_data.yPoint,
+		   tmp_sense_data.sense_val);
+	  }
+      }
+    // Do we have a good center?
+    low_sense_val = low_sense_data[0].sense_val;
+    low_index = 0;
+    printk("FSSC_CTR:  orig low_sense_val=%x\n", low_sense_val);
+    for (i = 1; i < 3; i++)
+      {
+	if (low_sense_data[i].sense_val <= low_sense_val)
+	  {
+	    low_sense_val = low_sense_data[i].sense_val;
+	    low_index = i;
+	    printk("FSSC_CTR:  found new low_sense_val=%x\n", low_sense_val);
+	  }
+      }
+    if (low_sense_val <= FSSC_LOW_THRESHOLD)
+      {
+	*CtrX = low_sense_data[low_index].xPoint;
+	*CtrY = low_sense_data[low_index].yPoint;
+	printk("FSSC_CTR:  Dead Center: XY =%x,%x, sense=%x, ORIG XY=%x,%x\n",
+	       *CtrX, *CtrY, low_sense_data[low_index].sense_val,
+	       startXY->xPoint, startXY->yPoint);
+	return(0);
+      }
+    printk("FSSC_CTR:  TARGET NOT FOUND FOR STARTXY %x,%x\n", startXY->xPoint, startXY->yPoint);
+    return(-1);
+}
+
 int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
 {
-    struct write_sense_fssc_data   *pSenseData;
     struct lv2_sense_line_data     new_point;
     struct lv2_xypoints            xyData;
+    struct write_sense_fssc_data   *pSenseData;
+    int                            ret;
     int16_t                        target_point1;
     int16_t                        target_point2;
     uint8_t                        target_sense_val1;
     uint8_t                        target_sense_val2;
-    uint8_t                        beam_setting;
-    uint8_t                        sense_val;
     
     pSenseData = (struct write_sense_fssc_data *)priv->pSenseBuff;
     if (pSenseData == NULL)
@@ -537,36 +710,37 @@ int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
     // Move beam to x, y spot
     xyData.xPoint = pSenseInfo->xData;
     xyData.yPoint = pSenseInfo->yData;
-    lv2_move_xydata_dark((struct lv2_xypoints *)&xyData);
+    lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
+    printk("FSSC_CTR:  START XY=%x,%x\n", xyData.xPoint, xyData.yPoint);
 
     // Start with input X,Y
-    new_point.xPoint  = pSenseInfo->xData;
-    new_point.yPoint  = pSenseInfo->yData;
-    printk("FSSC-START:  XY=%d,%d\n",new_point.xPoint, new_point.yPoint);
+    ret = lv2_find_ssc_center((struct lv2_xypoints *)&xyData, (int16_t *)&xyData.xPoint, (int16_t *)&xyData.yPoint);
+    if (ret < 0)
+      {
+	printk("FSSC_CTR:  FAILED, no center found around startXY=%d[%x],%d[%x]\n",
+	       pSenseInfo->xData, pSenseInfo->xData,
+	       pSenseInfo->yData, pSenseInfo->yData);
+	return(-EINVAL);
+      }
+    printk("FSSC_START:  ORIG=%x,%x, newCtr=%x,%x\n",
+	   pSenseInfo->xData, pSenseInfo->yData,
+	   xyData.xPoint, xyData.yPoint);
     
-    // NOTE:  Leave next lines as-is.  Takes laser a bit to start up and
-    // then sometimes there's a spike when beam is turned on,
-    // so do per-point write-sense & debounce sense-buffer-register
+    // NOTE:  Leave next lines as-is.
+    // Sometimes there's a spike when beam is turned on,
+    // so do per-point write-sense for first 2 points
     // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
-    beam_setting = inb(LG_IO_CNTRL2);
-    beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;
-    outb(beam_setting, LG_IO_CNTRL2);
-    lv2_sense_point(new_point.yPoint, LV2_YPOINT, &sense_val, pSenseInfo->point_delay);
-    sense_val = inb(TFPORTRL);
-    sense_val = inb(TFPORTRL);
-    sense_val = inb(TFPORTRL);
-    beam_setting |= LASERENABLE | BRIGHTBEAM;
-    outb(beam_setting, LG_IO_CNTRL2);
-    // NOTE:  END OF special-case first point.
+    new_point.xPoint = xyData.xPoint;
+    new_point.yPoint = xyData.yPoint;
 
     // Go UP (Y-ADD), search for top endpoint
-    printk("FSSC-YADD: XY=%d,%d\n", new_point.xPoint, new_point.yPoint);
+    printk("FSSC-YADD: XY=%x,%x\n", new_point.xPoint, new_point.yPoint);
     lv2_FindYEndpoint_add(pSenseData, &new_point, &target_point2, &target_sense_val2);
-    printk("FSSC-YADD: Closest yPoint=%d, sense-val=%d\n", target_point2, target_sense_val2);
+    printk("FSSC-YADD:  yPoint2=%x, sense-val=%d\n", target_point2, target_sense_val2);
     pSenseData->TopEndpoints.xPoint = pSenseInfo->xData;
     
     // Move back to original XY
-    printk("FSSC-MOVING BACK TO ORIGINAL XY: X=%d, Y=%d\n", xyData.xPoint, xyData.yPoint);
+    printk("FSSC-MOVING BACK TO ORIG %x,%x\n", xyData.xPoint, xyData.yPoint);
     lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
 
     // Set start XY for line-sense operation, sense first point 3 times
@@ -574,17 +748,19 @@ int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
     new_point.yPoint = xyData.yPoint;
 
     // Go Down (Y-SUB), search for bottom endpoint
-    printk("FSSC-YSUB: XY=%d,%d\n", new_point.xPoint, new_point.yPoint);
+    printk("FSSC-YSUB: XY=%x,%x\n", new_point.xPoint, new_point.yPoint);
     lv2_FindYEndpoint_sub(pSenseData, &new_point, &target_point1, &target_sense_val1);
-    printk("FSSC-YSUB: Closest yPoint=%d, sense-val=%x\n", target_point1, target_sense_val1);
+    printk("FSSC-YSUB:  yPoint1=%x, sense-val=%x\n", target_point1, target_sense_val1);
     pSenseData->BottomEndpoints.xPoint = pSenseInfo->xData;
 
     // Move to point closest to target to start search left & right
     xyData.xPoint  = pSenseInfo->xData;
-    xyData.yPoint = (pSenseData->TopEndpoints.yPoint + pSenseData->BottomEndpoints.yPoint)/2;
+    if (target_sense_val1 > target_sense_val2)
+      xyData.yPoint = target_point2;
+    else
+      xyData.yPoint = target_point1;
       
-    printk("FSSC-MOVING TO Y midpoint: X=%d[%x], Y=%d[%x], orig Y=%d[%x]\n", xyData.xPoint, xyData.xPoint,
-	   xyData.yPoint, xyData.yPoint, pSenseInfo->yData, pSenseInfo->yData);
+    printk("FSSC-MOVING TO POINT CLOSEST TO TARGET: %x,%x\n", xyData.xPoint, xyData.yPoint);
     lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
     
     new_point.xPoint = xyData.xPoint;
@@ -593,11 +769,11 @@ int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
     // Set XY to new start-point, Go right (X-ADD), search for right-side endpoint
     printk("FSSC-XADD: XY=%d,%d\n", new_point.xPoint, new_point.yPoint);
     lv2_FindXEndpoint_add(pSenseData, &new_point, &target_point1, &target_sense_val1);
-    printk("FSSC-XADD: Closest xPoint=%d, sense-val=%x\n", target_point1, target_sense_val1);
+    printk("FSSC-XADD: xPoint1=%x, sense-val=%x\n", target_point1, target_sense_val1);
     pSenseData->RightEndpoints.yPoint = xyData.yPoint;
     
     // Move back to mid-point to start search left & right
-    printk("FSSC-MOVING back to point: X=%d, Y=%d\n", xyData.xPoint, xyData.yPoint);
+    printk("FSSC-MOVING back to point %x,%x\n", xyData.xPoint, xyData.yPoint);
     lv2_move_xydata_lite((struct lv2_xypoints *)&xyData);
 
     new_point.xPoint = xyData.xPoint;
@@ -606,7 +782,7 @@ int lv2_find_ss_coords(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
     // Go left (X-SUB), search for bottom endpoint
     printk("FSSC-XSUB: XY=%d,%d\n", new_point.xPoint, new_point.yPoint);
     lv2_FindXEndpoint_sub(pSenseData, &new_point, &target_point2, &target_sense_val2);
-    printk("FSSC-XADD: Closest xPoint=%d, sense-val=%x\n", target_point2, target_sense_val2);
+    printk("FSSC-XADD: xPoint2=%d, sense-val=%x\n", target_point2, target_sense_val2);
     pSenseData->LeftEndpoints.yPoint = xyData.yPoint;
     printk("FFSC: LeftXY=%d,%d; RightXY=%d,%d; TopXY=%d,%d; BottomXY=%d,%d\n",
 	   pSenseData->LeftEndpoints.xPoint,
@@ -673,7 +849,7 @@ int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
 
     // Turn on beam, bright intensity
     beam_setting = inb(LG_IO_CNTRL2);           // Get initial val of LG_IO_CNTRL2 register
-    beam_setting |= LASERENABLE | BRIGHTBEAM;
+    beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
     outb(beam_setting, LG_IO_CNTRL2);
 
     for (i = 0; i < pSenseInfo->numLines; i++)
@@ -774,17 +950,20 @@ static void lv2_move_xydata(struct lv2_xypoints *xyData, uint8_t strobe_on, uint
 }
 static void lv2_move_xydata_dark(struct lv2_xypoints *xyData)
 {
+    printk("lv2_move_dark:  x=%x,y=%x", xyData->xPoint, xyData->yPoint);
     lv2_move_xydata(xyData, STROBE_ON_LASER_OFF, STROBE_OFF_LASER_OFF, LV2_BEAM_DARK);
     return;
 }
 static void lv2_move_xydata_dim(struct lv2_xypoints *xyData)
 {
+  //    printk("lv2_move_dim:  x=%x,y=%x", xyData->xPoint, xyData->yPoint);
     lv2_move_xydata(xyData, STROBE_ON_LASER_ON, STROBE_OFF_LASER_ON, LV2_BEAM_DIM);
     return;
 }
 static void lv2_move_xydata_lite(struct lv2_xypoints *xyData)
 {
-  lv2_move_xydata(xyData, STROBE_ON_LASER_ON, STROBE_OFF_LASER_ON, LV2_BEAM_BRIGHT);
+  //    printk("lv2_move_lite:  x=%x,y=%x", xyData->xPoint, xyData->yPoint);
+    lv2_move_xydata(xyData, STROBE_ON_LASER_ON, STROBE_OFF_LASER_ON, LV2_BEAM_BRIGHT);
     return;
 }      
 static int lv2_proc_cmd(struct cmd_rw *p_cmd_data, struct lv2_info *priv)
