@@ -61,6 +61,8 @@ void ConvertBinaryToGeometricAngles(struct lg_master *pLgMaster,
 void ConvertBinaryToExternalAngles(struct lg_master *pLgMaster,
 				   int16_t xIn, int16_t yIn,
 				   double *xOut, double *yOut);
+void ConvertBinaryToBinary(struct lg_master *pLgMaster, int16_t xIn, int16_t yIn,
+			   int16_t *xOut, int16_t *yOut);
 uint32_t ZeroOnLine(double angleX, double angleY, double transformArray[12],
 		    double *x, double *y );
 void CloseLaserInterface(void);

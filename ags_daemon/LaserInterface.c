@@ -295,6 +295,19 @@ syslog(LOG_NOTICE, "ConvertBinaryToExternalAngles" );
     ConvertMirrorToExternalAngles(xMirror, yMirror, xOut, yOut);
     return;
 }
+void ConvertBinaryToBinary(struct lg_master *pLgMaster, int16_t xIn, int16_t yIn,
+			   int16_t *xOut, int16_t *yOut)
+{
+    double xMirror, yMirror;
+    double tmpDblX=0;
+    double tmpDblY=0;
+    
+    ConvertBinaryToMirrorAngles(xIn, yIn, &xMirror, &yMirror);
+    RemovePoly(pLgMaster, &xMirror, &yMirror);
+    ConvertMirrorToExternalAngles(xMirror, yMirror, &tmpDblX, &tmpDblY);
+    ConvertExternalAnglesToBinary(pLgMaster, tmpDblX, tmpDblY, xOut, yOut); 
+    return;
+}
 double MirrorFactor ( double x )
 {
     return(1.0 / fabs(cos((x * .50) - gQuarterPi)) - gSqrtOfTwo);
