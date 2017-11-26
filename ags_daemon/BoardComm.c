@@ -742,6 +742,10 @@ int doLGSTOP(struct lg_master *pLgMaster)
   rc = write(pLgMaster->fd_lv2, (char *)&command, sizeof(command));
   if (rc < 0)
     syslog(LOG_ERR,"\nCMDW-NODATA: cmd %d, ERROR rc%d, errno %d\n", command, rc, errno);
+  // Send stop to display device (/dev/laser)
+  rc = write(pLgMaster->fd_laser, (char *)&command, sizeof(command));
+  if (rc < 0)
+    syslog(LOG_ERR,"\nCMDW-NODATA: cmd %d, ERROR rc%d, errno %d\n", command, rc, errno);
   // Send stop to master laser device (/dev/laser)
   return(doWriteDevCmdNoData(pLgMaster, command));
 }
