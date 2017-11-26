@@ -30,6 +30,8 @@
 #define  AUTO_SIZE      (2*1024)
 #define  AUTO_OFFSET   (1485*1024)
 
+#define  FOUNDDACS_SIZE (64*1024)
+
 void HandleFilePutData(struct lg_master *pLgMaster, char * parameters, uint32_t respondTo);
 void DoFilePutStart(struct lg_master *pLgMaster, char * parameters, uint32_t respondToWhom);
 void DoFileGetStart(struct lg_master *pLgMaster, char * parameters, uint32_t respondToWhom);
@@ -38,7 +40,7 @@ void DoFilePutDone(struct lg_master *pLgMaster, char * parameters, uint32_t resp
 int InitCheckVersion(struct lg_master *pLgMaster);
 int InitVision(struct lg_master *pLgMaster);
 
-int WriteBufferToFS (char * name, char *fromBuff, int32_t Size );
+int WriteBufferToFS (char * name, int32_t Size );
 int ReadFromFS ( char *buff,   char * name, int32_t offset, int32_t request, int *bytes_read );
 
 int WriteBufferToFlash (char * name, int32_t Size );
@@ -56,5 +58,8 @@ int ReadHugeFromFlash ( char *buff, char * name, int32_t offset, int32_t request
 extern
 void HugeInit(void)
 ;
+
+extern
+int WriteToBuffer ( char *buff,     int32_t offset, int32_t size );
 
 #endif // FILES_H

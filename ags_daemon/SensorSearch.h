@@ -54,8 +54,10 @@ void SetSuperFineFactor(uint32_t n);
 void InitSensorSearch(void);
 void CloseSensorSearch(void);
 void SensorInitLog(void);
+#if 0
 int SearchForASensor (struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 		      int16_t *foundX, int16_t *foundY);
+#endif
 void ClearSensorBuffers(void);
 uint32_t getSuperFineFactor(void);
 

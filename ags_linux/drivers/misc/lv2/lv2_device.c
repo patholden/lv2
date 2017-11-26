@@ -47,7 +47,6 @@ enum beam_type {
 
 static inline void lv2_send_xy_to_dac(struct lv2_xypoints *xyData, uint8_t strobe_on, uint8_t strobe_off, uint8_t beam_on_off);
 static void lv2_move_xydata_dark(struct lv2_xypoints *xyData);
-static void lv2_move_xydata_dim(struct lv2_xypoints *xyData);
 static void lv2_move_xydata_lite(struct lv2_xypoints *xyData);
 
 static inline void lv2_get_xydata_ltcval(int16_t *output_val, int16_t input_val)
@@ -350,15 +349,15 @@ static void lv2_coarse_scan_box_op(struct lv2_info *priv, struct lv2_sense_info 
     // conditions
     lv_adjust_start_xy(pSenseInfo->xData, pSenseInfo->yData, &new_point.xPoint, &new_point.yPoint, &new_point);
     
-    // NOTE:  Leave next lines as-is.
-    // Sometimes there's a spike when beam is turned on,
-    // so do per-point write-sense & debounce sense-buffer-register
     // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
     if (laser_setting == LV2_LASER_ON)
       beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;
     else
       beam_setting &= LASERDISABLE;            // dark move, disable laser
     outb(beam_setting, LG_IO_CNTRL2);
+    // NOTE:  Leave next lines as-is.
+    // Sometimes there's a spike when beam is turned on,
+    // so do per-point write-sense & debounce sense-buffer-register
     lv2_sense_point(new_point.yPoint, LV2_YPOINT, &sense_val, sense_delay);
     sense_val = inb(TFPORTRL);
     sense_val = inb(TFPORTRL);
@@ -788,7 +787,6 @@ int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
     struct write_sense_cs_data    *pSenseData;
     struct lv2_sense_line_data     new_point;
     struct lv2_xypoints            xyData;
-    uint32_t                       i;
     uint32_t                       line_count;
     int16_t                        startX;
     int16_t                        endX;
@@ -880,6 +878,128 @@ int lv2_super_scan(struct lv2_info *priv, struct lv2_ss_sense_info *pSenseInfo)
     return(0);
 }
 
+int lv2_quick_senseX(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
+{
+    struct lv2_sense_line_data  new_point;
+    struct write_sense_cs_data  *pSenseData;
+    uint8_t                     sense_delay;
+    uint8_t                     beam_setting;
+    uint8_t                     sense_val;
+
+    if (priv == NULL)
+      {
+	printk("AV-CS-BOX:   Bad pointer to private data\n");
+	return(-ENOMEM);
+      }
+    pSenseData =(struct write_sense_cs_data *)priv->pSenseBuff;
+
+    if (pSenseData == NULL)
+      {
+	printk("AV-CS-BOX:  Sensor buffer not allocated properly\n");
+	return(-ENOMEM);
+      }
+    memset((uint8_t *)pSenseData, 0, sizeof(struct write_sense_cs_data));
+
+    // Make sure to take device lock before starting.
+    spin_lock(&priv->lock);
+
+    // Get initial val of LG_IO_CNTRL2 register
+    beam_setting = inb(LG_IO_CNTRL2);
+
+    // Set up delay
+    if (pSenseInfo->point_delay < SENSOR_MIN_DELAY)
+      sense_delay = SENSOR_MIN_DELAY;
+    else
+      sense_delay = pSenseInfo->point_delay;
+
+    // These values are pushed from user & are constant
+    new_point.step      = pSenseInfo->step;
+    new_point.numPoints = pSenseInfo->numPoints;
+    new_point.point_delay = pSenseInfo->point_delay;
+    new_point.point_delay = SENSOR_MIN_DELAY;
+
+    // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
+    beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;
+    outb(beam_setting, LG_IO_CNTRL2);
+    // NOTE:  Leave next lines as-is.
+    // Sometimes there's a spike when beam is turned on,
+    // so do per-point write-sense & debounce sense-buffer-register
+    lv2_sense_point(new_point.yPoint, LV2_YPOINT, &sense_val, sense_delay);
+    sense_val = inb(TFPORTRL);
+    sense_val = inb(TFPORTRL);
+    sense_val = inb(TFPORTRL);
+    // NOTE:  END OF special-case first point.
+    
+    // Turn laser on
+    beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
+    outb(beam_setting, LG_IO_CNTRL2);
+
+    // ACROSS to right (X-ADD)
+    new_point.sense_buf_idx = 0;
+    lv2_senseX_add(pSenseData, &new_point);
+    return(0);
+}
+int lv2_quick_senseY(struct lv2_info *priv, struct lv2_sense_info *pSenseInfo)
+{
+    struct lv2_sense_line_data  new_point;
+    struct write_sense_cs_data  *pSenseData;
+    uint8_t                     sense_delay;
+    uint8_t                     beam_setting;
+    uint8_t                     sense_val;
+
+    if (priv == NULL)
+      {
+	printk("AV-CS-BOX:   Bad pointer to private data\n");
+	return(-ENOMEM);
+      }
+    pSenseData =(struct write_sense_cs_data *)priv->pSenseBuff;
+
+    if (pSenseData == NULL)
+      {
+	printk("AV-CS-BOX:  Sensor buffer not allocated properly\n");
+	return(-ENOMEM);
+      }
+    memset((uint8_t *)pSenseData, 0, sizeof(struct write_sense_cs_data));
+
+    // Make sure to take device lock before starting.
+    spin_lock(&priv->lock);
+
+    // Get initial val of LG_IO_CNTRL2 register
+    beam_setting = inb(LG_IO_CNTRL2);
+
+    // Set up delay
+    if (pSenseInfo->point_delay < SENSOR_MIN_DELAY)
+      sense_delay = SENSOR_MIN_DELAY;
+    else
+      sense_delay = pSenseInfo->point_delay;
+
+    // These values are pushed from user & are constant
+    new_point.step      = pSenseInfo->step;
+    new_point.numPoints = pSenseInfo->numPoints;
+    new_point.point_delay = pSenseInfo->point_delay;
+    new_point.point_delay = SENSOR_MIN_DELAY;
+
+    // Turn on beam, dim intensity  (sensing same point causes too-bright compared to others)
+    beam_setting = (beam_setting & DIMBEAM) | LASERENABLE;
+    outb(beam_setting, LG_IO_CNTRL2);
+    // NOTE:  Leave next lines as-is.
+    // Sometimes there's a spike when beam is turned on,
+    // so do per-point write-sense & debounce sense-buffer-register
+    lv2_sense_point(new_point.yPoint, LV2_YPOINT, &sense_val, sense_delay);
+    sense_val = inb(TFPORTRL);
+    sense_val = inb(TFPORTRL);
+    sense_val = inb(TFPORTRL);
+    // NOTE:  END OF special-case first point.
+    
+    // Turn laser on
+    beam_setting |= LASERENABLE | BRIGHTBEAM;   // light move, enable laser.
+    outb(beam_setting, LG_IO_CNTRL2);
+
+    // UP (Y-ADD)
+    new_point.sense_buf_idx = 0;
+    lv2_senseY_add(pSenseData, &new_point);
+    return(0);
+}
 void lv2_sense_one_ypoint(struct lv2_info *priv, struct lv2_sense_one_info *pSenseInfo)
 {
     struct write_sense_cs_data    *pSenseData=(struct write_sense_cs_data *)priv->pSenseBuff;
@@ -959,12 +1079,6 @@ static void lv2_move_xydata_dark(struct lv2_xypoints *xyData)
     lv2_move_xydata(xyData, STROBE_ON_LASER_OFF, STROBE_OFF_LASER_OFF, LV2_BEAM_DARK);
     return;
 }
-static void lv2_move_xydata_dim(struct lv2_xypoints *xyData)
-{
-  //    printk("lv2_move_dim:  x=%x,y=%x", xyData->xPoint, xyData->yPoint);
-    lv2_move_xydata(xyData, STROBE_ON_LASER_ON, STROBE_OFF_LASER_ON, LV2_BEAM_DIM);
-    return;
-}
 static void lv2_move_xydata_lite(struct lv2_xypoints *xyData)
 {
   //    printk("lv2_move_lite:  x=%x,y=%x", xyData->xPoint, xyData->yPoint);
@@ -1008,6 +1122,12 @@ static int lv2_proc_cmd(struct cmd_rw *p_cmd_data, struct lv2_info *priv)
 	break;
       case CMDW_LV2_SUPER_SCAN:
 	return(lv2_super_scan(priv, (struct lv2_ss_sense_info *)&p_cmd_data->base.cmd_data.ss_senseData));
+	break;
+      case CMDW_LV2_QUICK_SENSEX:
+	return(lv2_quick_senseX(priv, (struct lv2_sense_info *)&p_cmd_data->base.cmd_data.senseData));
+	break;
+      case CMDW_LV2_QUICK_SENSEY:
+	return(lv2_quick_senseY(priv, (struct lv2_sense_info *)&p_cmd_data->base.cmd_data.senseData));
 	break;
       default:
 	printk(KERN_ERR "AV-LV2:  CMDW %d option not found\n", p_cmd_data->base.hdr.cmd);

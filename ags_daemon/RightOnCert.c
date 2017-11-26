@@ -28,11 +28,13 @@ static char rcsid[] = "$Id: RightOnCert.c,v 1.2 2000/05/05 23:54:44 ags-sw Exp p
 #include "parse_data.h"
 #include "3DTransform.h"
 #include "AngleCorrections.h"
-#include "SensorSearch.h"
 #include "Protocol.h"
 #include "LaserInterface.h"
 #include "RightOnCert.h"
-
+#include "SensorSearch.h"
+#ifdef NEW_TFIND
+#include "TargetFind.h"
+#endif
 static double uptime(void);
 
 void RightOnCert(struct lg_master *pLgMaster,
@@ -175,8 +177,11 @@ void RightOnCert(struct lg_master *pLgMaster,
    pLgMaster->debug_count++;
 #endif
    pLgMaster->current_target = 0;
+#ifdef NEW_TFIND
+   status = FindTarget(pLgMaster, bXe, bYe, &bXf, &bYf);
+#else
    status = SearchForASensor(pLgMaster, bXe, bYe, &bXf, &bYf);
-
+#endif
    if (status == kStopWasDone)
      {
        SearchBeamOff(pLgMaster);

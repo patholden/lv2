@@ -372,6 +372,7 @@ int InitUserStuff (struct lg_master *pLgMaster)
       return(-1);
     InitAPTParser();
     InitSensorSearch();
+    HobbsCountersInit(pLgMaster);
     return(0);
 }
 

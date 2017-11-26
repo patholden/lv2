@@ -33,6 +33,7 @@ static char rcsid[] = "$Id: RightOnFullReg.c,v 1.2 2000/05/05 23:57:15 ags-sw Ex
 #include "3DTransform.h"
 #include "Protocol.h"
 #include "RightOnFullReg.h"
+#include "TargetFind.h"
 
 #define	kNumberOfSensorSearchAttempts 3
 
@@ -163,7 +164,11 @@ void RightOnFullReg(struct lg_master *pLgMaster,
                     pLgMaster->debug_count++;
 #endif
                     pLgMaster->current_target = i;
+#ifdef NEW_TFIND
+		    searchResult = FindTarget(pLgMaster, ptX, ptY, &fndX, &fndY);
+#else
 		    searchResult = SearchForASensor(pLgMaster, ptX, ptY, &fndX, &fndY);
+#endif
 		  }
 		else
 		  {

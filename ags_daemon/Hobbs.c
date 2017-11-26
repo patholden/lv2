@@ -21,11 +21,11 @@
 #include "Protocol.h"
 #include "Hobbs.h"
 #include "CRCHandler.h"
+#include "Files.h"
 
 time_t start_display;
 time_t end_display;
 
-static int ReadHobbsFromFile(FILE *filenum, struct lg_master *pLgMaster);
 static int ReadHobbsFromFile(FILE *filenum, struct lg_master *pLgMaster);
 
 static int WriteHobbsToFile(FILE *filenum, struct lg_master *pLgMaster)
@@ -38,20 +38,34 @@ static int WriteHobbsToFile(FILE *filenum, struct lg_master *pLgMaster)
   if (!filenum ||  !pLgMaster)
     return(-1);
 
+#ifdef ZDEBUG
+syslog(LOG_ERR,"about to write Hobbs to file");
+#endif
+
   // Get Hobbs counters and put into buffer
   sprintf(hobbsBuffer, "%10ld\r\n%10ld\r\n%10ld\r\n%10ld\r\n",
 	  pLgMaster->hobbs.hobbs_time,
 	  pLgMaster->hobbs.xscanner_time,
 	  pLgMaster->hobbs.yscanner_time,
 	  pLgMaster->hobbs.laser_time);
+
   bytes_to_write = strlen(hobbsBuffer);
   if (bytes_to_write <= 0)
     return(-2);
   
   // Write counters out to file
   num_write = fwrite(hobbsBuffer, bytes_to_write, 1, filenum);
+
+#ifdef ZDEBUG
+syslog(LOG_ERR,"wrote Hobbs to file  num %d   %d", (int)bytes_to_write, (int)num_write);
+#endif
+
   if (num_write <= 0)
     return(-3);
+
+  WriteToBuffer( hobbsBuffer, 0, bytes_to_write );
+  WriteBufferToFlash( "/flash/data/hobbs", bytes_to_write );
+
   return(0);
 }
 
@@ -61,15 +75,32 @@ int HobbsCountersInit(struct lg_master *pLgMaster)
   long   file_size;
   int    rc=0;
 
-  filefd = fopen("/laservision/data/hobbs", "w+");
+  filefd = fopen("/laser/data/hobbs", "r");
+
+#ifdef ZDEBUG
+syslog(LOG_ERR,"Hobbs file  fd %p",  filefd);
+#endif
+
   if (!filefd)
     return(-1);
 
-  fseek(filefd, 0, SEEK_SET);
+  fseek(filefd, 0, SEEK_END);
   file_size = ftell(filefd);
+
+#ifdef ZDEBUG
+syslog(LOG_ERR,"Hobbs file  size %d  fd %p", (int)file_size, filefd);
+#endif
+
+  fclose( filefd );
   // If zero-length then new file
   if (!file_size)
     {
+      filefd = fopen("/laser/data/hobbs", "w");
+
+#ifdef ZDEBUG
+syslog(LOG_ERR,"Hobbs write file  size %d  fd %p", (int)file_size, filefd);
+#endif
+
       rc = WriteHobbsToFile(filefd, pLgMaster);
       if (rc)
 	syslog(LOG_ERR,"Unable to write Hobbs counters to file");
@@ -77,11 +108,22 @@ int HobbsCountersInit(struct lg_master *pLgMaster)
   else
     {
       // Read in data from file
+      filefd = fopen("/laser/data/hobbs", "r");
+
+#ifdef ZDEBUG
+syslog(LOG_ERR,"Hobbs read  file  size %d  fd %p", (int)file_size, filefd);
+#endif
+
       rc = ReadHobbsFromFile(filefd, pLgMaster);
       if (rc)
 	syslog(LOG_ERR,"Unable to retrieve Hobbs counters from file");
     }
   fclose(filefd);
+
+#ifdef ZDEBUG
+syslog(LOG_ERR,"Hobbs closed  file  size %d  fd %p", (int)file_size, filefd);
+#endif
+
   return(rc);
 }
 
@@ -126,7 +168,11 @@ static int ReadHobbsFromFile(FILE *filenum, struct lg_master *pLgMaster)
   time_t xscanner_time;
   time_t yscanner_time;
   time_t laser_time;
-  
+
+#ifdef ZDEBUG
+syslog(LOG_ERR, "entering read Hobbs  num %p ", filenum );
+#endif
+
   // Figure out length of file
   fseek(filenum, 0L, SEEK_SET);
   fseek(filenum, 0L, SEEK_END);
@@ -141,23 +187,37 @@ static int ReadHobbsFromFile(FILE *filenum, struct lg_master *pLgMaster)
   
   // Read in data
   read_count = fread(pBuff, length, 1, filenum);
-  fclose(filenum);
+
   if (read_count <=0)
     return(-4);
   
   // Get counters from file & populate lg struct
-  sscanf(pBuff,
-	 "%[^0123456789]s\r\n%[^0123456789]s\r\n%[^0123456789]s\r\n%[^0123456789]s\r\n", 
-	 (char *)&projector_time,
-	 (char *)&xscanner_time,
-	 (char *)&yscanner_time,
-	 (char *)&laser_time);
+	 // "%[^0123456789]s\r\n%[^0123456789]s\r\n%[^0123456789]s\r\n%[^0123456789]s\r\n", 
+  sscanf(pBuff, "%ld %ld %ld %ld"
+	, &projector_time
+	, &xscanner_time
+	, &yscanner_time
+	, &laser_time
+        );
+
+#ifdef ZDEBUG
+syslog(LOG_ERR, " Hobbs  projector %ld ", projector_time );
+syslog(LOG_ERR, " Hobbs  xscanner  %ld ", xscanner_time );
+syslog(LOG_ERR, " Hobbs  yscanner  %ld ", yscanner_time );
+syslog(LOG_ERR, " Hobbs  laser     %ld ", laser_time );
+#endif
+
 
   // Update struct from file last recorded times
   pLgMaster->hobbs.hobbs_time += projector_time;
   pLgMaster->hobbs.xscanner_time += xscanner_time;
   pLgMaster->hobbs.yscanner_time += yscanner_time;
   pLgMaster->hobbs.laser_time += laser_time;
+
+#ifdef ZDEBUG
+syslog(LOG_ERR, "updated Hobbs  num %p ", filenum );
+#endif
+
   return(0);
 }
 
@@ -234,7 +294,7 @@ int WriteHobbs(struct lg_master *pLgMaster)
   FILE  *filefd;
   int    rc;
   
-  filefd = fopen("/laservision/data/hobbs", "w+");
+  filefd = fopen("/laser/data/hobbs", "w+");
   if (!filefd)
     return(-1);
   rc = WriteHobbsToFile(filefd, pLgMaster);

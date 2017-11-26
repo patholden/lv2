@@ -35,6 +35,9 @@ static char rcsid[] = "$Id$";
 #include "L3DTransform.h"
 #include "FOM.h"
 #include "parse_data.h"
+#ifdef NEW_TFIND
+#include "TargetFind.h"
+#endif
 
 #ifdef AGS_DEBUG
 void LogFlexRightOnDoFullRegWithFeedbackCommand(struct parse_flexrightondofullregwithfeedback_parms *param, struct lg_master *pLgMaster);
@@ -234,7 +237,11 @@ void FlexFullRegWithFeedback(struct lg_master *pLgMaster,
                     pLgMaster->debug_count++;
 #endif
                     pLgMaster->current_target = i;
+#ifdef NEW_TFIND
+		    searchResult = FindTarget(pLgMaster, ptX, ptY, &fndX, &fndY);
+#else
 		    searchResult = SearchForASensor(pLgMaster, ptX, ptY, &fndX, &fndY);
+#endif
 		    if (searchResult == kStopWasDone)
 		      {
 		        SearchBeamOff(pLgMaster);

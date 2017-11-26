@@ -11,6 +11,8 @@ void lv_box_sense_cmd(struct lg_master *pLgMaster, struct lv2_sense_info *pSense
 void lv_box_dark_sense_cmd(struct lg_master *pLgMaster, struct lv2_sense_info *pSenseData);
 void lv_find_ss_coords_sense_cmd(struct lg_master *pLgMaster, struct lv2_sense_info *pSenseData);
 void lv_super_scan_sense_cmd(struct lg_master *pLgMaster, struct lv2_ss_sense_info *pSenseData);
+void lv_quick_senseX_cmd (struct lg_master *pLgMaster, struct lv2_sense_info *pSenseData);
+void lv_quick_senseY_cmd (struct lg_master *pLgMaster, struct lv2_sense_info *pSenseData);
 
 
 #endif

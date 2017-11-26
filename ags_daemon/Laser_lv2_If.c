@@ -111,3 +111,13 @@ void lv_super_scan_sense_cmd(struct lg_master *pLgMaster, struct lv2_ss_sense_in
     doLv2WriteCmd(pLgMaster, (void *)pSenseData, sizeof(struct lv2_ss_sense_info), CMDW_LV2_SUPER_SCAN);
     return;
 }
+void lv_quick_senseX_cmd (struct lg_master *pLgMaster, struct lv2_sense_info *pSenseData)
+{
+    doLv2WriteCmd(pLgMaster, (void *)pSenseData, sizeof(struct lv2_sense_info), CMDW_LV2_QUICK_SENSEX);
+    return;
+}
+void lv_quick_senseY_cmd (struct lg_master *pLgMaster, struct lv2_sense_info *pSenseData)
+{
+    doLv2WriteCmd(pLgMaster, (void *)pSenseData, sizeof(struct lv2_sense_info), CMDW_LV2_QUICK_SENSEY);
+    return;
+}

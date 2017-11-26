@@ -35,6 +35,9 @@ static char rcsid[] = "$Id: FullRegWithFeedback.c,v 1.1 2006/06/05 18:40:30 ags-
 #include "BoardComm.h"
 #include "parse_data.h"
 #include "FullRegWithFeedback.h"
+#ifdef NEW_TFIND
+#include "TargetFind.h"
+#endif
 
 #define	kNumberOfSensorSearchAttempts 3
 
@@ -162,7 +165,11 @@ void FullRegWithFeedback(struct lg_master *pLgMaster,
 		    ptX = theAngleBuffer[i].xdata;
 		    ptY = theAngleBuffer[i].ydata;
 
+#ifdef NEW_TFIND
+		    searchResult = FindTarget(pLgMaster, ptX, ptY, &fndX, &fndY);
+#else
 		    searchResult = SearchForASensor(pLgMaster, ptX, ptY, &fndX, &fndY );
+#endif
 		    if (searchResult == kStopWasDone)
 		      {
 		        SearchBeamOff(pLgMaster);

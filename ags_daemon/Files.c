@@ -46,11 +46,9 @@
 
 #define  MOUNTDELAY  50000
 
-#ifndef USE_USBSTICK
 #define  LVPATH  "/flash"
 #define  LVDEV   "/dev/mmcblk0p2"
 #define  LVONE   "/dev/mmcblk0p1"
-#endif
 
 static char BIG_Buffer[BIG_SIZE];
 static char * HUGE_Buffer;
@@ -117,10 +115,11 @@ static char focus_vision_name[] = "visionfocus";
 static char polarizer_name[] = "polarizer";
 static char return_name[] = "targetreturns";
 static char bzImage_name[] = "bzimage";
+static char founddacs_name[] = "founddacs";
+
 static uint32_t saveLength;
 
-static int WriteToBigBuffer ( char *buff,     int32_t offset, int32_t size );
-static int WriteToHugeBuffer ( char *buff,     int32_t offset, int32_t size );
+static int HugeToBuffer ( char *buff,     int32_t offset, int32_t size );
 
 
 static int GetFileSize(char *name, uint32_t*size);
@@ -206,6 +205,10 @@ void   DoFileGetStart (struct lg_master *pLgMaster, char * parameters, uint32_t 
     else if ( strcmp( hob_name, lcName ) == 0 ) {
         size = HOBB_SIZE;
         sprintf(FSName, "%shobbs",lvdata_dir);
+    }
+    else if ( strcmp( founddacs_name, lcName ) == 0 ) {
+        size = FOUNDDACS_SIZE;
+        sprintf(FSName, "%sfounddacs",lvdata_dir);
     }
     else if ( strcmp( ver_name, lcName ) == 0 ) {
       sprintf(FSName, "%sversion",lvdata_dir);
@@ -360,6 +363,10 @@ void DoFileGetData  (struct lg_master *pLgMaster, char * parameters, uint32_t re
     else if ( strcmp( hob_name, lcName ) == 0 ) {
       MaxSize = HOBB_SIZE;
       sprintf(FSName, "%shobbs",lvdata_dir);
+    }
+    else if ( strcmp( founddacs_name, lcName ) == 0 ) {
+      MaxSize = FOUNDDACS_SIZE;
+      sprintf(FSName, "%sfounddacs",lvdata_dir);
     }
     else if (strcmp(ver_name, lcName) == 0 )
       {
@@ -519,6 +526,9 @@ syslog(LOG_NOTICE, "DoFilePutStart  file %s request %d", lcName, request );
     else if ( strcmp( hob_name, lcName ) == 0 ) {
         MaxSize =    HOBB_SIZE;
     }
+    else if ( strcmp( founddacs_name, lcName ) == 0 ) {
+        MaxSize =    FOUNDDACS_SIZE;
+    }
     else if ( strcmp( auto_name, lcName ) == 0 ) {
         MaxSize =    AUTO_SIZE;
     }
@@ -629,6 +639,9 @@ void   HandleFilePutData  (struct lg_master *pLgMaster, char * parameters, uint3
     else if ( strcmp( hob_name, lcName ) == 0 ) {
         MaxSize =    HOBB_SIZE;
     }
+    else if ( strcmp( founddacs_name, lcName ) == 0 ) {
+        MaxSize =    FOUNDDACS_SIZE;
+    }
     else if ( strcmp( auto_name, lcName ) == 0 ) {
         MaxSize =    AUTO_SIZE;
     }
@@ -647,7 +660,7 @@ void   HandleFilePutData  (struct lg_master *pLgMaster, char * parameters, uint3
           err = -1;
         else
           {
-            err = WriteToHugeBuffer(pInp->inp_buffer, offset, length  );
+            err = HugeToBuffer(pInp->inp_buffer, offset, length  );
             if (err)
               {
                 pResp->hdr.cmd = RESPFAIL;
@@ -677,7 +690,7 @@ void   HandleFilePutData  (struct lg_master *pLgMaster, char * parameters, uint3
       err = -1;
     else
       {
-	err = WriteToBigBuffer(pInp->inp_buffer, offset, length  );
+	err = WriteToBuffer(pInp->inp_buffer, offset, length  );
 	if (err)
 	  {
 	    pResp->hdr.cmd = RESPFAIL;
@@ -808,6 +821,11 @@ void   DoFilePutDone  ( struct lg_master *pLgMaster, char * parameters, uint32_t
         sprintf(FSName,    "%shobbs",lvdata_dir);
         sprintf(flashName, "%shobbs",flashdata_dir);
     }
+    else if ( strcmp( founddacs_name, lcName ) == 0 ) {
+        MaxSize =    FOUNDDACS_SIZE;
+        sprintf(FSName,    "%sfounddacs",lvdata_dir);
+        sprintf(flashName, "%sfounddacs",flashdata_dir);
+    }
     else if ( strcmp( vision_name, lcName ) == 0 ) {
         MaxSize =    BIG_SIZE;
         sprintf(FSName,    "%svision", lvdata_dir);
@@ -842,12 +860,8 @@ void   DoFilePutDone  ( struct lg_master *pLgMaster, char * parameters, uint32_t
     }
     else if ( strcmp( bzImage_name, lcName ) == 0 ) {
         MaxSize =    HUGE_SIZE;
-        sprintf(FSName, "%sbzImage", lvdata_dir );
-        sprintf(flashName, "%sbzImage", flashdata_dir );
-	err = WriteBufferToFS( FSName, HUGE_Buffer, saveLength );
-#ifndef USE_USBSTICK
+        sprintf(flashName, "/flash/bzImage" );
 	err = WriteHugeToFlash( flashName, saveLength );
-#endif
         if (err) {
 	    pResp->hdr.cmd = RESPFAIL;
 	    HandleResponse(pLgMaster, (sizeof(struct parse_basic_resp)-kCRCSize), respondToWhom);
@@ -870,10 +884,8 @@ void   DoFilePutDone  ( struct lg_master *pLgMaster, char * parameters, uint32_t
       {
         err = GetBufferSize( MaxSize, &size );
         if ( !err && (size == saveLength)) {
-	  err = WriteBufferToFS(FSName, BIG_Buffer, saveLength );
-#ifndef USE_USBSTICK
+	  err = WriteBufferToFS(    FSName,    saveLength );
 	  err = WriteBufferToFlash( flashName, saveLength );
-#endif
         } else {
             err = -1;
         }
@@ -982,29 +994,32 @@ void ReadVersion(struct lg_master *pLgMaster)
  return;
 }
 
-static void WriteToBuffer ( char *from_buff, char *to_buff, int32_t offset, int32_t size )
+int WriteToBuffer ( char *buff, int32_t offset, int32_t size )
 {
-  memmove( (void *)(&(to_buff[offset])), (void *)from_buff, (size_t) size );
-  return;
+  int err;
+
+  err = 0;
+
+  if((size+offset) >= BIG_SIZE)
+    return(-1);
+  memmove( (void *)(&(BIG_Buffer[offset])), (void *)buff, (size_t) size );
+  return err;
 }
 
-static int WriteToBigBuffer ( char *buff, int32_t offset, int32_t size )
+static int HugeToBuffer ( char *buff, int32_t offset, int32_t size )
 {
-    if((size+offset) >= BIG_SIZE)
-      return(-1);
-    WriteToBuffer(buff, BIG_Buffer, offset, size);
-    return(0);
-}
-static int WriteToHugeBuffer ( char *buff, int32_t offset, int32_t size )
-{
-    if((size+offset) >= HUGE_SIZE)
-      return(-1);
-    WriteToBuffer(buff, HUGE_Buffer, offset, size);
-    return(0);
+  int err;
+
+  err = 0;
+
+  if((size+offset) >= HUGE_SIZE)
+    return(-1);
+  memmove( (void *)(&(HUGE_Buffer[offset])), (void *)buff, (size_t) size );
+  return err;
 }
 
 
-int WriteBufferToFS ( char * name, char *fromBuff, int32_t Size )
+int WriteBufferToFS ( char * name, int32_t Size )
 {
   int request, size, i;
   char *ptr;
@@ -1015,7 +1030,7 @@ int WriteBufferToFS ( char * name, char *fromBuff, int32_t Size )
 
   request = Size;
   i = request;
-  ptr = &(fromBuff[request-1]);
+  ptr = &(BIG_Buffer[request-1]);
   while ( ( *ptr== 0 ) && ( i > 0 ) ) {
        ptr--; i--;
   }
@@ -1035,7 +1050,7 @@ int WriteBufferToFS ( char * name, char *fromBuff, int32_t Size )
                 , S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH
                 );
   if (filenum != -1) {
-      length = write( filenum, fromBuff, size );
+      length = write( filenum, BIG_Buffer, size );
       close( filenum );
   } else {
       syslog(LOG_ERR, "error opening to write %s", name);
@@ -1092,7 +1107,6 @@ int ReadFromFS ( char *buff, char * name, int32_t offset, int32_t request, int *
 }
 
 
-#ifndef USE_USBSTICK
 int WriteBufferToFlash ( char * name, int32_t Size )
 {
   int request, size, i;
@@ -1155,6 +1169,8 @@ int WriteBufferToFlash ( char * name, int32_t Size )
       syslog( LOG_DEBUG, "error writing  length %d", length);
       return(-3);
   }
+
+  
   return(0);
 }
 
@@ -1207,7 +1223,7 @@ int ReadFromFlash ( char *buff, char * name, int32_t offset, int32_t request, in
 
   return(0);
 }
-#endif
+
 
 static int GetVersionSize(struct lg_master *pLgMaster, uint32_t *size)
 {
@@ -1294,7 +1310,7 @@ int InitVision(struct lg_master *pLgMaster)
     return(err);
 }
 
-#ifndef USE_USBSTICK
+
 int WriteHugeToFlash ( char * name, int32_t Size )
 {
   int request, size, i;
@@ -1357,7 +1373,7 @@ int WriteHugeToFlash ( char * name, int32_t Size )
   
   return(0);
 }
-#endif
+
 
 void HugeInit(void)
 {

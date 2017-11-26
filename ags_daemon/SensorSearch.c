@@ -80,7 +80,6 @@ uint32_t gSuperFineFactor = 1;
 void SetFineLevelResults(int16_t firstX,int16_t firstY, int16_t lastX, int16_t lastY,
 				int16_t *MinX, int16_t *MinY, int16_t *MaxX, int16_t *MaxY);
 
-//static int sensor_sort( const void *elem1, const void *elem2 );
 int superFirstLast(struct lg_master *pLgMaster
                          , int16_t *firstX
                          , int16_t *firstY
@@ -99,18 +98,21 @@ findFirstLast(struct lg_master *pLgMaster, int16_t *firstX, int16_t *lastX,
 	      int16_t *firstY, int16_t *lastY, int16_t *foundX, int16_t *foundY,
 	      int16_t currentX, int16_t currentY, int16_t xStep, int16_t yStep,
 	      uint16_t nSteps);
+#ifndef NEW_TFIND
 static int DoFineLevel(struct lg_master *pLgMaster, int16_t inpX, int16_t inpY,
 		       int16_t *foundX, int16_t *foundY, int16_t *outMinX,
 		       int16_t *outMinY, int16_t *outMaxX, int16_t *outMaxY);
 static int SuperSearch(struct lg_master *pLgMaster, int16_t *foundX,
 		       int16_t *foundY, int16_t *MinX, int16_t *MinY,
 		       int16_t *MaxX, int16_t * MaxY);
-
+#endif
 void limitCalc(int16_t centerX, int16_t centerY, int16_t *eolXNeg,
 	       int16_t *eolXPos, int16_t *eolYNeg, int16_t *eolYPos, int32_t nSteps);
+#ifndef NEW_TFIND
 static int CoarseLeg(struct lg_master *pLgMaster, int16_t Xin, int16_t Yin,
 		     int16_t delX, int16_t delY, uint32_t nStepsIn,
 		     int16_t *foundX, int16_t *foundY);
+#endif
 static int DoQuickFineSearch(struct lg_master *pLgMaster, int16_t *foundX, int16_t *foundY);
 void AdjustXYLimit(int16_t *eolXPos, int16_t *eolXNeg, int16_t *eolYPos, int16_t *eolYNeg, int16_t delta);
 int compare ( const void * a, const void * b );
@@ -247,6 +249,8 @@ int QuickCheckOne(struct lg_master *pLgMaster, int16_t centerX, int16_t centerY,
         return theResult;
 }
 
+#ifndef NEW_TFIND
+// SearchForASensor() has been replaced by FindTarget()
 int SearchForASensor(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
 		      int16_t *foundX, int16_t *foundY)
 {
@@ -526,7 +530,6 @@ syslog(LOG_DEBUG,"S6ASxy fnd %x %x result %x", *foundX, *foundY, theResult );
     move_one_dark(pLgMaster, (struct lg_xydata *)&xydata);
     return(theResult);
 }
-
 static int CoarseLeg(struct lg_master *pLgMaster, int16_t Xin, int16_t Yin,
 		     int16_t delX, int16_t delY, uint32_t nStepsIn,
 		     int16_t *foundX, int16_t *foundY)
@@ -813,6 +816,7 @@ syslog( LOG_NOTICE
       }
     return(theResult);
 }        
+#endif
 static int DoQuickFineSearch(struct lg_master *pLgMaster, int16_t *foundX, int16_t *foundY)
 {
     struct lg_xydata xydata;
@@ -1265,6 +1269,7 @@ void SetFineLevelResults(int16_t firstX,int16_t firstY, int16_t lastX, int16_t l
       return;
 }
 
+#ifndef NEW_TFIND
 static int DoFineLevel(struct lg_master *pLgMaster, int16_t inpX, int16_t inpY,
 		       int16_t *foundX, int16_t *foundY, int16_t *outMinX,
 		       int16_t *outMinY, int16_t *outMaxX, int16_t *outMaxY)
@@ -1434,7 +1439,7 @@ syslog( LOG_NOTICE
 
     return(0);
 }
-
+#endif
 int findFirstLast(struct lg_master *pLgMaster, int16_t *firstX, int16_t *firstY,
 			 int16_t *lastX, int16_t *lastY, int16_t *foundX,
 			 int16_t *foundY, int16_t currentX, int16_t currentY,
@@ -2227,6 +2232,7 @@ int SearchSingleSetOutXY( struct lg_master *pLgMaster
     return(0);
 }
 
+#ifndef NEW_TFIND
 int SuperSearch(struct lg_master *pLgMaster
                , int16_t *foundX
                , int16_t *foundY
@@ -2790,26 +2796,8 @@ syslog( LOG_DEBUG, "SuperSe2336 X min/max %x %x Y min/max %x %x", *MinX, *MaxX, 
         *foundY = avgY;
         return(0);
       }
-#if 0
-    else if (gSuperIndex > 0)
-      {
-        sumX = 0;
-        sumY = 0;
-        for (i = 0; i < gSuperIndex; i++)
-	  {
-	    sumX += gXsuperSave[i];
-	    sumY += gYsuperSave[i];
-	  }
-        avgX = (int16_t)(sumX / gSuperIndex);
-        avgY = (int16_t)(sumY / gSuperIndex);
-        *foundX = avgX;
-        *foundY = avgY;
-      }
-#endif
   return(0);
 }
-
-#if 0
 static int sensor_sort(const void *elem1, const void *elem2)
 {
     int16_t numone, numtwo;
