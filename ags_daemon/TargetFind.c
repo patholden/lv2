@@ -314,7 +314,7 @@ int FindSuperScanCoords(struct lg_master *pLgMaster, int16_t startX, int16_t sta
 	return(-1);
       }
     // Found coords for superscan, send back to caller
-    syslog(LOG_DEBUG, "FFSC: LeftXY=%x,%x; RightXY=%x,%x; TopXY=%x,%x; BottomXY=%x,%x\n",
+    syslog(LOG_DEBUG, "FSSC: LeftXY=%x,%x; RightXY=%x,%x; TopXY=%x,%x; BottomXY=%x,%x\n",
 	   pSenseFound->LeftEndpoints.xPoint,
 	   pSenseFound->LeftEndpoints.yPoint,
 	   pSenseFound->RightEndpoints.xPoint,
@@ -325,8 +325,10 @@ int FindSuperScanCoords(struct lg_master *pLgMaster, int16_t startX, int16_t sta
 	   pSenseFound->BottomEndpoints.yPoint);
     *numLines = pSenseFound->TopEndpoints.yPoint - pSenseFound->BottomEndpoints.yPoint;
     *numPoints = pSenseFound->RightEndpoints.xPoint - pSenseFound->LeftEndpoints.xPoint;
-    *superScanX = pSenseFound->BottomEndpoints.xPoint - (*numPoints/2);
+    *superScanX = pSenseFound->LeftEndpoints.xPoint;
     *superScanY = pSenseFound->BottomEndpoints.yPoint;
+    syslog(LOG_DEBUG, "FSSC: SS-startX:%d[%x], SS-startY:%d[%x], numLines: %d, numPoints:%d",
+	   *superScanX, *superScanX, *superScanY, *superScanY, *numLines, *numPoints);
     free((uint8_t *)pSenseFound);
     return(0);
 }
@@ -412,6 +414,8 @@ int SuperScan(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     xydata.yPoint = startY; 
     lv_setpoints_dark(pLgMaster, (struct lv2_xypoints *)&xydata);
     usleep(250);
+    lv_setpoints_lite(pLgMaster, (struct lv2_xypoints *)&xydata);
+    usleep(250);
 
     // Send super-scan command to driver
     lv_super_scan_sense_cmd(pLgMaster, (struct lv2_ss_sense_info *)&sense_data);
@@ -448,6 +452,7 @@ int FindTarget(struct lg_master *pLgMaster, int16_t startX, int16_t startY,
     syslog(LOG_NOTICE, "CoarseScan(): TARGET FOUND at x=%d[%x],y=%d[%x]", *foundX,*foundX,*foundY, *foundY);
     
     // Got a target. Next phase, find endpoints for super-fine scan
+    // First make adjustment using calibration info
     ConvertBinaryToBinary(pLgMaster, *foundX, *foundY, &newX, &newY);
     syslog(LOG_DEBUG, "COARSE-SCAN-FOUND:  StartXY1=%d[%x],%d[%x]; CorrectXY=%d[%x],%d[%x]",
 	   *foundX, *foundX, *foundY, *foundY, newX, newX, newY, newY);
